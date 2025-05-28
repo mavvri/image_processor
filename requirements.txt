@@ -1,0 +1,18 @@
+# Dependencias para el Sistema de Procesamiento Digital de Imágenes
+# Versión 3.1 - Sistema Orgánico Minimalista
+
+# Framework de interfaz gráfica
+PyQt6==6.6.1
+
+# Procesamiento numérico y matemático
+numpy==1.24.3
+
+# Procesamiento de imágenes
+opencv-python==4.8.1.78
+
+# Manipulación adicional de imágenes
+Pillow==10.0.1
+
+# Dependencias opcionales para mejores gráficos
+# matplotlib==3.7.2
+# scipy==1.11.3
