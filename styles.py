@@ -8,16 +8,30 @@ class ThemeManager:
     
     @staticmethod
     def get_organic_theme():
-        """Tema orgánico minimalista con paleta azul suave"""
         return """
-            /* Tema Orgánico Minimalista */
+            /* Reset y base */
             QWidget {
-                background-color: #fafcff;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(248, 250, 255, 1), 
+                    stop:1 rgba(255, 255, 255, 1));
                 color: #2c3e50;
-                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
                 font-size: 13px;
                 font-weight: 400;
-                letter-spacing: -0.005em;
+                line-height: 1.5;
+                selection-background-color: rgba(102, 126, 234, 0.3);
+            }
+            
+            /* Sidebar principal */
+            #Sidebar {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(255, 255, 255, 0.95), 
+                    stop:1 rgba(248, 250, 255, 0.98));
+                border: none;
+                border-right: 1px solid rgba(102, 126, 234, 0.1);
+                border-radius: 0;
+                min-width: 280px;
+                max-width: 320px;
             }
             
             /* Header Orgánico */
@@ -31,8 +45,9 @@ class ThemeManager:
             #AppTitle {
                 color: white;
                 font-size: 22px;
-                font-weight: 600;
-                letter-spacing: -0.02em;
+                font-weight: 700;
+                letter-spacing: -0.025em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #AppSubtitle {
@@ -40,6 +55,7 @@ class ThemeManager:
                 font-size: 13px;
                 font-weight: 400;
                 letter-spacing: 0.01em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Botones Principales Orgánicos */
@@ -49,15 +65,17 @@ class ThemeManager:
                 border: none;
                 border-radius: 16px;
                 color: white;
-                font-weight: 500;
+                font-weight: 600;
                 font-size: 14px;
                 padding: 12px 24px;
                 min-width: 120px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #PrimaryButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #7c83f2, stop:1 #667eea);
+                transform: translateY(-1px);
             }
             
             #PrimaryButton:pressed {
@@ -87,6 +105,7 @@ class ThemeManager:
                 font-size: 16px;
                 font-weight: 500;
                 line-height: 1.6;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Panel de Estado */
@@ -103,6 +122,7 @@ class ThemeManager:
                 font-weight: 500;
                 font-size: 14px;
                 letter-spacing: 0.01em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #ProgressIndicator {
@@ -113,18 +133,20 @@ class ThemeManager:
             
             #CardTitle {
                 color: #2c3e50;
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 15px;
                 margin-bottom: 8px;
-                letter-spacing: -0.01em;
+                letter-spacing: -0.015em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #SectionHeader {
                 color: #667eea;
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 16px;
                 margin-bottom: 12px;
-                letter-spacing: -0.01em;
+                letter-spacing: -0.015em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Sección de Presets */
@@ -138,12 +160,13 @@ class ThemeManager:
             #PresetDescription {
                 color: #4a5568;
                 font-size: 12px;
-                line-height: 1.5;
+                line-height: 1.6;
                 background: rgba(255, 255, 255, 0.9);
                 border-radius: 12px;
                 padding: 12px;
                 margin-top: 8px;
                 border: 1px solid rgba(102, 126, 234, 0.1);
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Controles Modernos */
@@ -156,6 +179,7 @@ class ThemeManager:
                 min-height: 20px;
                 color: #2c3e50;
                 font-weight: 500;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             QComboBox:hover {
@@ -222,6 +246,7 @@ class ThemeManager:
                 font-size: 12px;
                 margin: 6px 0;
                 letter-spacing: 0.01em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Botón de Procesamiento */
@@ -231,9 +256,10 @@ class ThemeManager:
                 border: none;
                 border-radius: 18px;
                 color: white;
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 15px;
                 letter-spacing: 0.01em;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #ProcessButton:hover {
@@ -252,8 +278,9 @@ class ThemeManager:
                 border: 1px solid rgba(102, 126, 234, 0.2);
                 border-radius: 12px;
                 color: #2c3e50;
-                font-weight: 500;
+                font-weight: 600;
                 padding: 10px 16px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #SecondaryButton:hover {
@@ -268,6 +295,7 @@ class ThemeManager:
                 border-radius: 10px;
                 color: #4a5568;
                 font-size: 14px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             #TertiaryButton:hover, #StopButton:hover, #SaveButton:hover, #InfoButton:hover {
@@ -308,6 +336,7 @@ class ThemeManager:
                 color: #4a5568;
                 font-size: 12px;
                 font-weight: 500;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             /* Contenedor de Resultados */
@@ -344,12 +373,13 @@ class ThemeManager:
                 background: rgba(248, 250, 252, 0.9);
                 border: 1px solid rgba(102, 126, 234, 0.15);
                 color: #4a5568;
-                font-weight: 500;
+                font-weight: 600;
                 margin-right: 4px;
                 padding: 12px 20px;
                 border-top-left-radius: 12px;
                 border-top-right-radius: 12px;
                 border-bottom: none;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             QTabBar::tab:selected {
@@ -370,6 +400,7 @@ class ThemeManager:
                 font-weight: 500;
                 spacing: 8px;
                 font-size: 13px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             QCheckBox::indicator {
@@ -399,6 +430,7 @@ class ThemeManager:
                 padding: 6px 10px;
                 min-height: 18px;
                 font-weight: 500;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
             QSpinBox:hover {
@@ -411,36 +443,219 @@ class ThemeManager:
                 outline: none;
             }
             
-            /* Ventana de Información */
+            /* === VENTANA DE INFORMACIÓN REDISEÑADA === */
+            
+            /* Ventana Principal de Información */
             #InfoWindow {
-                background: rgba(255, 255, 255, 0.98);
-                border: 1px solid rgba(102, 126, 234, 0.2);
-                border-radius: 20px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.98), 
+                    stop:1 rgba(248, 250, 255, 0.98));
+                border: 1px solid rgba(102, 126, 234, 0.15);
+                border-radius: 24px;
+                padding: 0px;
             }
             
+            /* Header de la Ventana de Información */
+            #InfoHeader {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #667eea, stop:1 #764ba2);
+                border-radius: 24px 24px 0px 0px;
+                padding: 20px 24px;
+                border: none;
+            }
+            
+            /* Título Principal */
             #InfoTitle {
-                color: #667eea;
+                color: white;
+                font-size: 20px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+                margin: 0px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            }
+            
+            /* Subtítulo */
+            #InfoSubtitle {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 13px;
+                font-weight: 400;
+                letter-spacing: 0.005em;
+                margin-top: 4px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            }
+            
+            /* Botón de Cerrar */
+            #CloseButton {
+                background: rgba(255, 255, 255, 0.15);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                color: white;
                 font-size: 18px;
-                font-weight: 600;
-                letter-spacing: -0.01em;
+                font-weight: 700;
+                padding: 6px;
+                min-width: 32px;
+                max-width: 32px;
+                min-height: 32px;
+                max-height: 32px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
             
-            #InfoContent {
-                color: #2c3e50;
+            #CloseButton:hover {
+                background: rgba(255, 255, 255, 0.25);
+                border-color: rgba(255, 255, 255, 0.4);
+                transform: scale(1.05);
+            }
+            
+            #CloseButton:pressed {
+                background: rgba(255, 255, 255, 0.1);
+                transform: scale(0.95);
+            }
+            
+            /* === TABS DE IMÁGENES === */
+            
+            /* Contenedor principal de tabs de imagen */
+            #ImageTabWidget {
+                background: transparent;
+                border: none;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            }
+            
+            #ImageTabWidget::pane {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #f8faff, stop:1 #f0f4ff);
+                border: 2px dashed rgba(102, 126, 234, 0.3);
+                border-radius: 20px;
+                top: -1px;
+                padding: 4px;
+                margin-top: 20px;
+            }
+            
+            #ImageTabWidget::tab-bar {
+                left: 8px;
+                top: 8px;
+            }
+            
+            /* Pestañas de imagen */
+            #ImageTabWidget QTabBar::tab {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.9), 
+                    stop:1 rgba(248, 250, 255, 0.9));
+                border: 1px solid rgba(102, 126, 234, 0.2);
+                color: #4a5568;
+                font-weight: 600;
                 font-size: 12px;
-                line-height: 1.6;
-                background: rgba(248, 250, 252, 0.5);
-                border-radius: 12px;
-                padding: 16px;
-                border: 1px solid rgba(102, 126, 234, 0.1);
+                margin-right: 2px;
+                padding: 8px 16px;
+                border-top-left-radius: 12px;
+                border-top-right-radius: 12px;
+                border-bottom: none;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+                min-width: 100px;
+                max-width: 200px;
             }
             
-            #FilterCategory {
-                color: #4c63d2;
-                font-size: 14px;
+            #ImageTabWidget QTabBar::tab:selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 white, 
+                    stop:1 rgba(255, 255, 255, 0.95));
+                color: #667eea;
+                border-color: rgba(102, 126, 234, 0.3);
+                border-bottom: 2px solid #667eea;
+                font-weight: 700;
+                margin-top: -2px;
+                z-index: 1;
+            }
+            
+            #ImageTabWidget QTabBar::tab:hover:!selected {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.95), 
+                    stop:1 rgba(248, 250, 255, 0.95));
+                color: #2c3e50;
+                border-color: rgba(102, 126, 234, 0.3);
+            }
+            
+            /* Botón de cerrar en las pestañas */
+            #ImageTabWidget QTabBar::close-button {
+                background: rgba(255, 107, 107, 0.2);
+                border: 1px solid rgba(255, 107, 107, 0.3);
+                border-radius: 8px;
+                width: 16px;
+                height: 16px;
+                margin: 2px 4px 2px 8px;
+                subcontrol-position: right;
+            }
+            
+            #ImageTabWidget QTabBar::close-button:hover {
+                background: rgba(255, 107, 107, 0.4);
+                border-color: #e53e3e;
+            }
+            
+            /* Contenido de cada pestaña de imagen */
+            #ImageTab {
+                background: transparent;
+                border: none;
+                border-radius: 16px;
+                margin: 4px;
+            }
+            
+            /* Display de imagen individual */
+            #ImageDisplay_Tab {
+                background: transparent;
+                border: none;
+                border-radius: 16px;
+                color: #667eea;
+                font-size: 16px;
+                font-weight: 500;
+                line-height: 1.6;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+                min-height: 350px;
+            }
+            
+            /* Etiquetas de estado de pestaña */
+            #TabStatusLabel {
+                color: #667eea;
+                font-size: 11px;
                 font-weight: 600;
-                margin-top: 12px;
-                margin-bottom: 8px;
+                background: rgba(102, 126, 234, 0.1);
+                border-radius: 8px;
+                padding: 4px 8px;
+                margin: 4px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            }
+            
+            /* Botones de acción en pestañas */
+            #TabActionButton {
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid rgba(102, 126, 234, 0.2);
+                border-radius: 8px;
+                color: #4a5568;
+                font-size: 12px;
+                font-weight: 600;
+                padding: 6px 8px;
+                margin: 2px;
+                min-width: 24px;
+                max-width: 24px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            }
+            
+            #TabActionButton:hover {
+                background: white;
+                border-color: #667eea;
+                color: #667eea;
+            }
+            
+            /* Tooltip personalizado para pestañas */
+            QToolTip {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.98), 
+                    stop:1 rgba(248, 250, 255, 0.98));
+                border: 1px solid rgba(102, 126, 234, 0.2);
+                border-radius: 8px;
+                color: #2c3e50;
+                font-size: 11px;
+                font-weight: 500;
+                padding: 6px 10px;
+                font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
             }
         """
 

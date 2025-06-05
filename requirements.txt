@@ -13,6 +13,8 @@ opencv-python==4.8.1.78
 # Manipulación adicional de imágenes
 Pillow==10.0.1
 
+# Visualización de histogramas
+matplotlib==3.7.2
+
 # Dependencias opcionales para mejores gráficos
-# matplotlib==3.7.2
 # scipy==1.11.3

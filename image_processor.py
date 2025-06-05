@@ -284,9 +284,15 @@ class ImageProcessor(QThread):
         try:
             self.started.emit()
             
+            # Check if image_path is valid and not empty
+            if not self.image_path or not self.image_path.strip():
+                print("Error: Empty or invalid image path")
+                return
+            
             img = cv2.imread(self.image_path)
             if img is None:
-                raise ValueError("No se pudo leer la imagen")
+                print(f"Error: Could not read image from path: {self.image_path}")
+                return
 
             current_img = img.copy()
 
@@ -365,8 +371,12 @@ class ImageProcessor(QThread):
 
     def __del__(self):
         """Destructor - ensure thread is stopped"""
-        if hasattr(self, 'stop_processing'):
-            self.stop_processing = True
-        # Never wait in destructor - just signal to quit
-        if self.isRunning():
-            self.quit()
+        try:
+            if hasattr(self, 'stop_processing'):
+                self.stop_processing = True
+            # Never wait in destructor - just signal to quit
+            if hasattr(self, 'isRunning') and self.isRunning():
+                self.quit()
+        except (RuntimeError, AttributeError):
+            # Object may already be deleted
+            pass

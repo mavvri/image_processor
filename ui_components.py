@@ -307,18 +307,16 @@ class ImageProcessingApp(AnimatedWidget):
         self.setMinimumSize(1400, 800)
         
         # State variables
-        self.image_path = None
-        self.second_image_path = None
-        self.original_image = None
-        self.second_image = None
-        self.current_processed_image = None
+        self.image_tabs = {}  # Dictionary to store tab data
+        self.current_tab_id = None
+        self.tab_counter = 0
         self.image_processor = None
         self.temp_processors = []
         
         # Real-time processing optimization
         self.processing_timer = QTimer(self)
         self.processing_timer.setSingleShot(True)
-        self.processing_timer.setInterval(300)  # 300ms debounce
+        self.processing_timer.setInterval(300)
         self.processing_timer.timeout.connect(self.process_image_realtime)
         
         self.is_processing = False
@@ -341,17 +339,17 @@ class ImageProcessingApp(AnimatedWidget):
 
     def update_ui_state(self):
         """Update UI state based on loaded images"""
-        has_primary_image = self.image_path is not None
-        has_second_image = self.second_image_path is not None
+        has_images = len(self.image_tabs) > 0
+        has_multiple_images = len(self.image_tabs) > 1
         
         # Show/hide second image controls
-        self.load_second_btn.setVisible(has_primary_image)
+        self.load_second_btn.setVisible(True)
         
         # Show/hide operations panel
-        self.operations_widget.setVisible(has_primary_image and has_second_image)
+        self.operations_widget.setVisible(has_multiple_images)
         
         # Enable/disable process button
-        self.process_button.setEnabled(has_primary_image)
+        self.process_button.setEnabled(has_images)
 
     def closeEvent(self, event):
         """Handle application close event to clean up threads"""
@@ -426,6 +424,14 @@ class ImageProcessingApp(AnimatedWidget):
         # Panel de archivos
         files_panel = self.create_files_panel()
         scroll_layout.addWidget(files_panel)
+        
+        # Panel de visualización
+        visualization_panel = self.create_visualization_panel()
+        scroll_layout.addWidget(visualization_panel)
+        
+        # Panel de detección de objetos
+        object_detection_panel = self.create_object_detection_panel()
+        scroll_layout.addWidget(object_detection_panel)
         
         # Panel de parámetros dinámicos
         dynamic_panel = self.create_dynamic_params_panel()
@@ -547,6 +553,7 @@ class ImageProcessingApp(AnimatedWidget):
             # Crear visualización de pasos
             for i, (icon, text, color) in enumerate(pipeline_steps):
                 step_widget = QFrame()
+                # Remove unsupported CSS properties
                 step_widget.setStyleSheet(f"""
                     QFrame {{
                         background-color: {color}20;
@@ -717,8 +724,512 @@ class ImageProcessingApp(AnimatedWidget):
         
         return panel
 
+    def create_segmentation_panel(self):
+        panel = CollapsiblePanel("✂️ Segmentación")
+        
+        panel.add_widget(QLabel("Método:"))
+        self.segmentation_combo = QComboBox()
+        self.segmentation_combo.addItems([
+            "Ninguno", "Umbral Media", "Otsu", "Multi-Otsu",
+            "Entropía Kapur", "Umbral Banda", "Adaptativo", "Mín. Histograma"
+        ])
+        self.segmentation_combo.currentTextChanged.connect(self.on_filter_changed)
+        panel.add_widget(self.segmentation_combo)
+        
+        return panel
+
+    def create_action_buttons(self):
+        """Crear botones de acción"""
+        layout = QVBoxLayout()
+        
+        # Botón de procesamiento
+        self.process_button = QPushButton("🚀 Procesar")
+        self.process_button.setObjectName("ProcessButton")
+        self.process_button.clicked.connect(self.start_processing)
+        layout.addWidget(self.process_button)
+        
+        # Botón de parar
+        self.stop_button = QPushButton("⏹️ Detener")
+        self.stop_button.setObjectName("StopButton")
+        self.stop_button.clicked.connect(self.stop_processing)
+        self.stop_button.setEnabled(False)
+        layout.addWidget(self.stop_button)
+        
+        # Botón de guardar
+        self.save_button = QPushButton("💾 Guardar")
+        self.save_button.setObjectName("SaveButton")
+        self.save_button.clicked.connect(self.save_image)
+        self.save_button.setEnabled(False)
+        layout.addWidget(self.save_button)
+        
+        return layout
+
+    def update_dynamic_parameters(self):
+        """Actualizar parámetros dinámicos según filtros seleccionados"""
+        # Clear existing dynamic parameters
+        for i in reversed(range(self.dynamic_params_layout.count())):
+            child = self.dynamic_params_layout.takeAt(i)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Re-add auto params button
+        self.auto_params_btn = QPushButton("🤖 Calcular Automático")
+        self.auto_params_btn.clicked.connect(self.calculate_automatic_parameters)
+        self.dynamic_params_layout.addWidget(self.auto_params_btn)
+        
+        # Add parameters based on selected filters
+        self.add_filter_specific_parameters()
+        self.add_segmentation_specific_parameters()
+
+    def add_filter_specific_parameters(self):
+        """Agregar parámetros específicos del filtro seleccionado"""
+        filter_type = self.get_selected_filter()
+        edge_type = self.get_selected_edge_detection()
+        
+        # Kernel size for most filters
+        if filter_type in ['averaging', 'weighted_averaging', 'median', 'mode', 'gaussian', 'max', 'min']:
+            self.add_kernel_size_parameter()
+        
+        # Gaussian sigma
+        if filter_type == 'gaussian':
+            self.add_gaussian_sigma_parameter()
+        
+        # Bilateral parameters
+        if filter_type == 'bilateral':
+            self.add_bilateral_parameters()
+        
+        # Canny parameters
+        if edge_type == 'canny':
+            self.add_canny_parameters()
+
+    def add_kernel_size_parameter(self):
+        """Agregar control de tamaño de kernel"""
+        layout = QHBoxLayout()
+        label = QLabel("Tamaño Kernel:")
+        self.kernel_spin = QSpinBox()
+        self.kernel_spin.setRange(3, 15)
+        self.kernel_spin.setValue(5)
+        self.kernel_spin.setSingleStep(2)
+        self.kernel_spin.valueChanged.connect(self.on_parameter_changed)
+        
+        layout.addWidget(label)
+        layout.addWidget(self.kernel_spin)
+        
+        widget = QWidget()
+        widget.setLayout(layout)
+        self.dynamic_params_layout.addWidget(widget)
+
+    def add_gaussian_sigma_parameter(self):
+        """Agregar control de sigma para Gaussiano"""
+        layout = QVBoxLayout()
+        label = QLabel("Sigma:")
+        
+        slider_layout = QHBoxLayout()
+        self.gaussian_sigma_slider = QSlider(Qt.Orientation.Horizontal)
+        self.gaussian_sigma_slider.setRange(1, 50)
+        self.gaussian_sigma_slider.setValue(10)
+        self.gaussian_sigma_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.gaussian_sigma_label = QLabel("1.0")
+        self.gaussian_sigma_slider.valueChanged.connect(
+            lambda v: self.gaussian_sigma_label.setText(f"{v/10.0:.1f}")
+        )
+        
+        slider_layout.addWidget(self.gaussian_sigma_slider)
+        slider_layout.addWidget(self.gaussian_sigma_label)
+        
+        layout.addWidget(label)
+        layout.addLayout(slider_layout)
+        
+        widget = QWidget()
+        widget.setLayout(layout)
+        self.dynamic_params_layout.addWidget(widget)
+
+    def add_bilateral_parameters(self):
+        """Agregar parámetros para filtro bilateral"""
+        # D parameter
+        layout1 = QHBoxLayout()
+        label1 = QLabel("Diámetro:")
+        self.bilateral_d_spin = QSpinBox()
+        self.bilateral_d_spin.setRange(5, 25)
+        self.bilateral_d_spin.setValue(9)
+        self.bilateral_d_spin.valueChanged.connect(self.on_parameter_changed)
+        
+        layout1.addWidget(label1)
+        layout1.addWidget(self.bilateral_d_spin)
+        
+        widget1 = QWidget()
+        widget1.setLayout(layout1)
+        self.dynamic_params_layout.addWidget(widget1)
+        
+        # Sigma color/space
+        layout2 = QVBoxLayout()
+        label2 = QLabel("Sigma Color/Space:")
+        
+        slider_layout = QHBoxLayout()
+        self.bilateral_color_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bilateral_color_slider.setRange(25, 150)
+        self.bilateral_color_slider.setValue(75)
+        self.bilateral_color_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.bilateral_color_label = QLabel("75")
+        self.bilateral_color_slider.valueChanged.connect(
+            lambda v: self.bilateral_color_label.setText(str(v))
+        )
+        
+        slider_layout.addWidget(self.bilateral_color_slider)
+        slider_layout.addWidget(self.bilateral_color_label)
+        
+        layout2.addWidget(label2)
+        layout2.addLayout(slider_layout)
+        
+        widget2 = QWidget()
+        widget2.setLayout(layout2)
+        self.dynamic_params_layout.addWidget(widget2)
+
+    def add_canny_parameters(self):
+        """Agregar parámetros para Canny"""
+        # Low threshold
+        layout1 = QVBoxLayout()
+        label1 = QLabel("Umbral Bajo:")
+        
+        slider_layout1 = QHBoxLayout()
+        self.canny_low_slider = QSlider(Qt.Orientation.Horizontal)
+        self.canny_low_slider.setRange(10, 200)
+        self.canny_low_slider.setValue(50)
+        self.canny_low_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.canny_low_label = QLabel("50")
+        self.canny_low_slider.valueChanged.connect(
+            lambda v: self.canny_low_label.setText(str(v))
+        )
+        
+        slider_layout1.addWidget(self.canny_low_slider)
+        slider_layout1.addWidget(self.canny_low_label)
+        
+        layout1.addWidget(label1)
+        layout1.addLayout(slider_layout1)
+        
+        widget1 = QWidget()
+        widget1.setLayout(layout1)
+        self.dynamic_params_layout.addWidget(widget1)
+        
+        # High threshold
+        layout2 = QVBoxLayout()
+        label2 = QLabel("Umbral Alto:")
+        
+        slider_layout2 = QHBoxLayout()
+        self.canny_high_slider = QSlider(Qt.Orientation.Horizontal)
+        self.canny_high_slider.setRange(50, 300)
+        self.canny_high_slider.setValue(150)
+        self.canny_high_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.canny_high_label = QLabel("150")
+        self.canny_high_slider.valueChanged.connect(
+            lambda v: self.canny_high_label.setText(str(v))
+        )
+        
+        slider_layout2.addWidget(self.canny_high_slider)
+        slider_layout2.addWidget(self.canny_high_label)
+        
+        layout2.addWidget(label2)
+        layout2.addLayout(slider_layout2)
+        
+        widget2 = QWidget()
+        widget2.setLayout(layout2)
+        self.dynamic_params_layout.addWidget(widget2)
+
+    def add_segmentation_specific_parameters(self):
+        """Agregar parámetros específicos de segmentación"""
+        seg_type = self.get_selected_segmentation()
+        
+        if seg_type == 'multi_otsu':
+            self.add_multi_otsu_parameters()
+        elif seg_type == 'band':
+            self.add_band_threshold_parameters()
+        elif seg_type == 'adaptive':
+            self.add_adaptive_parameters()
+
+    def add_multi_otsu_parameters(self):
+        """Agregar parámetros para Multi-Otsu"""
+        layout = QHBoxLayout()
+        label = QLabel("Núm. Clases:")
+        self.num_classes_spin = QSpinBox()
+        self.num_classes_spin.setRange(2, 6)
+        self.num_classes_spin.setValue(3)
+        self.num_classes_spin.valueChanged.connect(self.on_parameter_changed)
+        
+        layout.addWidget(label)
+        layout.addWidget(self.num_classes_spin)
+        
+        widget = QWidget()
+        widget.setLayout(layout)
+        self.dynamic_params_layout.addWidget(widget)
+
+    def add_band_threshold_parameters(self):
+        """Agregar parámetros para umbral banda"""
+        # Low threshold
+        layout1 = QVBoxLayout()
+        label1 = QLabel("Umbral Bajo:")
+        
+        slider_layout1 = QHBoxLayout()
+        self.band_low_slider = QSlider(Qt.Orientation.Horizontal)
+        self.band_low_slider.setRange(0, 255)
+        self.band_low_slider.setValue(50)
+        self.band_low_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.band_low_label = QLabel("50")
+        self.band_low_slider.valueChanged.connect(
+            lambda v: self.band_low_label.setText(str(v))
+        )
+        
+        slider_layout1.addWidget(self.band_low_slider)
+        slider_layout1.addWidget(self.band_low_label)
+        
+        layout1.addWidget(label1)
+        layout1.addLayout(slider_layout1)
+        
+        widget1 = QWidget()
+        widget1.setLayout(layout1)
+        self.dynamic_params_layout.addWidget(widget1)
+        
+        # High threshold
+        layout2 = QVBoxLayout()
+        label2 = QLabel("Umbral Alto:")
+        
+        slider_layout2 = QHBoxLayout()
+        self.band_high_slider = QSlider(Qt.Orientation.Horizontal)
+        self.band_high_slider.setRange(0, 255)
+        self.band_high_slider.setValue(200)
+        self.band_high_slider.valueChanged.connect(self.on_parameter_changed)
+        
+        self.band_high_label = QLabel("200")
+        self.band_high_slider.valueChanged.connect(
+            lambda v: self.band_high_label.setText(str(v))
+        )
+        
+        slider_layout2.addWidget(self.band_high_slider)
+        slider_layout2.addWidget(self.band_high_label)
+        
+        layout2.addWidget(label2)
+        layout2.addLayout(slider_layout2)
+        
+        widget2 = QWidget()
+        widget2.setLayout(layout2)
+        self.dynamic_params_layout.addWidget(widget2)
+
+    def add_adaptive_parameters(self):
+        """Agregar parámetros para umbralización adaptativa"""
+        layout = QVBoxLayout()
+        label = QLabel("Tamaño Bloque:")
+        
+        slider_layout = QHBoxLayout()
+        self.adaptive_block_slider = QSlider(Qt.Orientation.Horizontal)
+        self.adaptive_block_slider.setRange(3, 31)
+        self.adaptive_block_slider.setValue(11)
+        # Ensure odd values only
+        self.adaptive_block_slider.valueChanged.connect(self.ensure_odd_block_size)
+        
+        self.adaptive_block_label = QLabel("11")
+        
+        slider_layout.addWidget(self.adaptive_block_slider)
+        slider_layout.addWidget(self.adaptive_block_label)
+        
+        layout.addWidget(label)
+        layout.addLayout(slider_layout)
+        
+        widget = QWidget()
+        widget.setLayout(layout)
+        self.dynamic_params_layout.addWidget(widget)
+
+    def ensure_odd_block_size(self, value):
+        """Asegurar que el tamaño de bloque sea impar"""
+        if value % 2 == 0:
+            value += 1
+            self.adaptive_block_slider.setValue(value)
+        self.adaptive_block_label.setText(str(value))
+        self.on_parameter_changed()
+
+    def on_parameter_changed(self):
+        """Called when any parameter changes"""
+        self.schedule_realtime_processing()
+
+    def process_image_realtime(self):
+        """Process image in real-time with optimization for current tab"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab or self.is_processing:
+            self.pending_update = True
+            return
+        self.start_processing_optimized()
+
+    def apply_theme(self):
+        """Apply the organic theme"""
+        from styles import ThemeManager
+        try:
+            self.setStyleSheet(ThemeManager.get_organic_theme())
+        except:
+            # Fallback to basic dark theme
+            self.setStyleSheet("""
+                QWidget {
+                    background-color: #2b2b2b;
+                    color: #ffffff;
+                    font-family: "Segoe UI", Arial, sans-serif;
+                    font-size: 12px;
+                }
+            """)
+
+    def start_processing(self):
+        """Start manual processing"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
+            return
+        
+        self.start_processing_optimized()
+
+    def save_image(self):
+        """Save the current processed image"""
+        current_tab = self.get_current_tab_data()
+        if current_tab:
+            self.save_tab_image(self.current_tab_id)
+        else:
+            QMessageBox.information(self, "Información", "No hay imagen procesada para guardar.")
+
+    def stop_processing(self):
+        """Stop current processing"""
+        if self.image_processor:
+            if self.image_processor.isRunning():
+                self.image_processor.stop()
+                self.image_processor.quit()
+            
+            self.processing_finished()
+            self.results_text.append("⏹️ Procesamiento detenido por el usuario")
+
+    def processing_started(self):
+        """Called when processing starts"""
+        self.process_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+        self.progress_bar.show()
+        self.operation_label.setText("Procesando...")
+        self.results_text.append("🚀 Procesando imagen...")
+        self.is_processing = True
+
+    def processing_finished(self):
+        """Called when processing finishes"""
+        self.process_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.save_button.setEnabled(True)
+        self.progress_bar.hide()
+        self.operation_label.setText("Listo")
+        self.results_text.append("✅ Procesamiento completado")
+        self.is_processing = False
+        
+        if self.image_processor:
+            self.image_processor.deleteLater()
+            self.image_processor = None
+        
+        # Process pending updates
+        if self.pending_update:
+            self.pending_update = False
+            self.schedule_realtime_processing()
+
+    def calculate_automatic_parameters(self):
+        """Calculate automatic parameters for current image"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
+            return
+        
+        self.cleanup_temp_processors()
+        
+        temp_processor = ImageProcessor(
+            image_path=current_tab['image_path'],
+            filter_type='none',
+            segmentation_type='none'
+        )
+        temp_processor.calculate_auto_params = True
+        temp_processor.parameters_calculated.connect(self.apply_automatic_parameters)
+        temp_processor.finished.connect(lambda: self.cleanup_temp_processor(temp_processor))
+        
+        self.temp_processors.append(temp_processor)
+        temp_processor.start()
+
+    def apply_automatic_parameters(self, params):
+        """Apply automatically calculated parameters"""
+        old_timer_state = self.processing_timer.isActive()
+        self.processing_timer.stop()
+        
+        try:
+            if hasattr(self, 'canny_low_slider') and self.canny_low_slider:
+                self.canny_low_slider.setValue(params.get('canny_low', 50))
+        except RuntimeError:
+            pass
+            
+        try:
+            if hasattr(self, 'canny_high_slider') and self.canny_high_slider:
+                self.canny_high_slider.setValue(params.get('canny_high', 150))
+        except RuntimeError:
+            pass
+            
+        try:
+            if hasattr(self, 'kernel_spin') and self.kernel_spin:
+                self.kernel_spin.setValue(params.get('kernel_size', 5))
+        except RuntimeError:
+            pass
+            
+        try:
+            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider:
+                self.adaptive_block_slider.setValue(params.get('adaptive_block_size', 11))
+        except RuntimeError:
+            pass
+            
+        try:
+            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider:
+                self.bilateral_color_slider.setValue(int(params.get('bilateral_sigma_color', 75)))
+        except RuntimeError:
+            pass
+            
+        try:
+            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin:
+                self.bilateral_d_spin.setValue(params.get('bilateral_d', 9))
+        except RuntimeError:
+            pass
+        
+        try:
+            if hasattr(self, 'num_classes_spin') and self.num_classes_spin:
+                self.num_classes_spin.setValue(params.get('optimal_multi_otsu_classes', 3))
+        except RuntimeError:
+            pass
+        
+        self.results_text.append("🤖 Parámetros calculados automáticamente")
+        
+        if old_timer_state or self.get_current_tab_data():
+            self.schedule_realtime_processing()
+
+    def cleanup_temp_processors(self):
+        """Clean up finished temporary processors"""
+        for processor in self.temp_processors[:]:
+            if processor and not processor.isRunning():
+                self.temp_processors.remove(processor)
+                processor.deleteLater()
+
+    def cleanup_temp_processor(self, processor):
+        """Clean up a specific temporary processor"""
+        if processor in self.temp_processors:
+            self.temp_processors.remove(processor)
+        processor.deleteLater()
+
+    def schedule_realtime_processing(self):
+        """Schedule real-time processing with debouncing"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            return
+        self.processing_timer.stop()
+        self.processing_timer.start()
+        self.update_pipeline_visualization()
+
     def create_main_workspace(self, parent_layout):
-        """Área principal de trabajo"""
+        """Área principal de trabajo con pestañas para imágenes"""
         main_area = QFrame()
         main_area.setObjectName("MainCanvas")
         
@@ -726,15 +1237,17 @@ class ImageProcessingApp(AnimatedWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
         
-        # Área de imagen
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setMinimumSize(600, 400)
-        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.image_label.setObjectName("ImageDisplay")
-        self.image_label.setText("Arrastra una imagen aquí o usa 'Cargar Imagen'")
+        # Widget de pestañas para imágenes
+        self.image_tab_widget = QTabWidget()
+        self.image_tab_widget.setObjectName("ImageTabWidget")
+        self.image_tab_widget.setTabsClosable(True)
+        self.image_tab_widget.currentChanged.connect(self.on_tab_changed)
+        self.image_tab_widget.tabCloseRequested.connect(self.close_image_tab)
         
-        layout.addWidget(self.image_label, 1)
+        # Pestaña inicial vacía
+        self.create_empty_tab()
+        
+        layout.addWidget(self.image_tab_widget, 1)
         
         # Panel de estado
         status_frame = QFrame()
@@ -755,6 +1268,438 @@ class ImageProcessingApp(AnimatedWidget):
         layout.addWidget(status_frame)
         
         parent_layout.addWidget(main_area, 1)
+
+    def create_empty_tab(self):
+        """Crear pestaña vacía inicial"""
+        empty_widget = QWidget()
+        empty_widget.setObjectName("ImageTab")
+        empty_layout = QVBoxLayout(empty_widget)
+        
+        empty_label = QLabel("Arrastra una imagen aquí o usa 'Cargar Imagen'")
+        empty_label.setObjectName("ImageDisplay_Tab")
+        empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_label.setMinimumSize(600, 400)
+        empty_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        empty_layout.addWidget(empty_label)
+        
+        tab_index = self.image_tab_widget.addTab(empty_widget, "Sin imagen")
+        self.image_tab_widget.setTabsClosable(False)  # No permitir cerrar la pestaña vacía
+        return tab_index
+
+    def create_image_tab(self, image_path, image_data, tab_name):
+        """Crear nueva pestaña para una imagen"""
+        # Incrementar contador de pestañas
+        self.tab_counter += 1
+        tab_id = f"tab_{self.tab_counter}"
+        
+        # Crear widget de la pestaña
+        tab_widget = QWidget()
+        tab_widget.setObjectName("ImageTab")
+        tab_layout = QVBoxLayout(tab_widget)
+        tab_layout.setContentsMargins(4, 4, 4, 4)
+        
+        # Label para mostrar la imagen
+        image_label = QLabel()
+        image_label.setObjectName("ImageDisplay_Tab")
+        image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image_label.setMinimumSize(600, 400)
+        image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Mostrar la imagen
+        self.display_image_in_label(image_data, image_label)
+        
+        tab_layout.addWidget(image_label)
+        
+        # Información de la pestaña
+        info_frame = QFrame()
+        info_layout = QHBoxLayout(info_frame)
+        info_layout.setContentsMargins(8, 4, 8, 4)
+        
+        # Etiqueta de estado
+        status_label = QLabel("✓ Imagen cargada")
+        status_label.setObjectName("TabStatusLabel")
+        
+        # Botón para guardar
+        save_btn = QPushButton("💾")
+        save_btn.setObjectName("TabActionButton")
+        save_btn.setToolTip("Guardar imagen")
+        save_btn.clicked.connect(lambda: self.save_tab_image(tab_id))
+        
+        info_layout.addWidget(status_label)
+        info_layout.addStretch()
+        info_layout.addWidget(save_btn)
+        
+        tab_layout.addWidget(info_frame)
+        
+        # Quitar la pestaña vacía si existe
+        if self.image_tab_widget.count() == 1 and self.image_tab_widget.tabText(0) == "Sin imagen":
+            self.image_tab_widget.removeTab(0)
+            self.image_tab_widget.setTabsClosable(True)
+        
+        # Agregar nueva pestaña
+        tab_index = self.image_tab_widget.addTab(tab_widget, tab_name)
+        
+        # Guardar información de la pestaña
+        self.image_tabs[tab_id] = {
+            'tab_index': tab_index,
+            'image_path': image_path,
+            'original_image': image_data.copy(),
+            'current_image': image_data.copy(),
+            'image_label': image_label,
+            'status_label': status_label,
+            'tab_name': tab_name
+        }
+        
+        # Activar la nueva pestaña
+        self.image_tab_widget.setCurrentIndex(tab_index)
+        self.current_tab_id = tab_id
+        
+        return tab_id
+
+    def display_image_in_label(self, img, label):
+        """Mostrar imagen en un QLabel específico"""
+        if len(img.shape) == 2:
+            h, w = img.shape
+            q_image = QImage(img.data, w, h, w, QImage.Format.Format_Grayscale8)
+        else:
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_image.shape
+            q_image = QImage(rgb_image.data, w, h, ch * w, QImage.Format.Format_RGB888)
+        
+        pixmap = QPixmap.fromImage(q_image)
+        scaled_pixmap = pixmap.scaled(
+            label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        label.setPixmap(scaled_pixmap)
+
+    def on_tab_changed(self, index):
+        """Manejar cambio de pestaña activa"""
+        if index < 0:
+            self.current_tab_id = None
+            return
+            
+        # Encontrar el tab_id correspondiente al índice
+        for tab_id, tab_data in self.image_tabs.items():
+            if tab_data['tab_index'] == index:
+                self.current_tab_id = tab_id
+                self.update_ui_for_current_tab()
+                break
+
+    def close_image_tab(self, index):
+        """Cerrar pestaña de imagen"""
+        # Encontrar el tab_id correspondiente
+        tab_id_to_remove = None
+        for tab_id, tab_data in self.image_tabs.items():
+            if tab_data['tab_index'] == index:
+                tab_id_to_remove = tab_id
+                break
+        
+        if tab_id_to_remove:
+            # Remover de diccionario
+            del self.image_tabs[tab_id_to_remove]
+            
+            # Actualizar índices de pestañas restantes
+            for tab_id, tab_data in self.image_tabs.items():
+                if tab_data['tab_index'] > index:
+                    tab_data['tab_index'] -= 1
+        
+        # Remover pestaña del widget
+        self.image_tab_widget.removeTab(index)
+        
+        # Si no quedan pestañas, crear una vacía
+        if self.image_tab_widget.count() == 0:
+            self.create_empty_tab()
+            self.current_tab_id = None
+        
+        self.update_ui_state()
+
+    def get_current_tab_data(self):
+        """Obtener datos de la pestaña activa"""
+        if self.current_tab_id and self.current_tab_id in self.image_tabs:
+            return self.image_tabs[self.current_tab_id]
+        return None
+
+    def update_ui_for_current_tab(self):
+        """Actualizar UI para la pestaña actual"""
+        tab_data = self.get_current_tab_data()
+        if tab_data:
+            # Actualizar información de imagen
+            img = tab_data['original_image']
+            h, w = img.shape[:2]
+            info_text = f"Imagen: {tab_data['tab_name']}\n"
+            info_text += f"Tamaño: {w} × {h}\n"
+            info_text += f"Canales: {img.shape[2] if len(img.shape) > 2 else 1}"
+            self.image_info_label.setText(info_text)
+            
+            # Procesar imagen si hay filtros activos
+            self.schedule_realtime_processing()
+
+    def save_tab_image(self, tab_id):
+        """Guardar imagen de una pestaña específica"""
+        if tab_id in self.image_tabs:
+            tab_data = self.image_tabs[tab_id]
+            current_img = tab_data['current_image']
+            
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Guardar Imagen Procesada", f"{tab_data['tab_name']}_processed",
+                "PNG (*.png);;JPEG (*.jpg);;Todos los archivos (*)"
+            )
+            
+            if file_path:
+                success = cv2.imwrite(file_path, current_img)
+                if success:
+                    self.results_text.append(f"💾 Imagen guardada: {os.path.basename(file_path)}")
+                    tab_data['status_label'].setText("💾 Guardada")
+                else:
+                    QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
+
+    def load_image(self):
+        """Cargar imagen principal"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar Imagen", "", 
+            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
+        )
+        
+        if file_path:
+            image_data = cv2.imread(file_path)
+            
+            if image_data is not None:
+                tab_name = os.path.basename(file_path)
+                tab_id = self.create_image_tab(file_path, image_data, tab_name)
+                
+                self.results_text.append(f"✓ Imagen cargada: {tab_name}")
+                self.update_ui_state()
+                self.update_pipeline_visualization()
+
+    def load_second_image(self):
+        """Cargar segunda imagen"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar Segunda Imagen", "", 
+            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
+        )
+        
+        if file_path:
+            image_data = cv2.imread(file_path)
+            
+            if image_data is not None:
+                tab_name = f"Img2_{os.path.basename(file_path)}"
+                tab_id = self.create_image_tab(file_path, image_data, tab_name)
+                
+                self.results_text.append(f"✓ Segunda imagen: {tab_name}")
+                self.update_ui_state()
+
+    def show_filter_info(self):
+        """Mostrar ventana de información de filtros"""
+        if self.info_window is None:
+            self.info_window = FilterInfoWindow(self)
+        self.info_window.show()
+        self.info_window.raise_()
+
+    def start_processing_optimized(self):
+        """Start optimized processing for current tab"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            return
+        
+        # Check if image path is valid
+        image_path = current_tab.get('image_path', '')
+        if not image_path or not image_path.strip():
+            print("Warning: No valid image path for processing")
+            return
+        
+        # Clean up previous processor
+        if self.image_processor:
+            if self.image_processor.isRunning():
+                self.image_processor.stop()
+                self.image_processor.quit()
+            self.image_processor = None
+
+        filter_type = "none"
+        filter_params = self.get_filter_parameters()
+        
+        edge_filter = self.get_selected_edge_detection()
+        if edge_filter != "none":
+            filter_type = edge_filter
+        else:
+            morph_filter = self.get_selected_morphological()
+            if morph_filter != "none":
+                filter_type = morph_filter
+            else:
+                smoothing_filter = self.get_selected_filter()
+                if smoothing_filter != "none":
+                    filter_type = smoothing_filter
+
+        try:
+            self.image_processor = ImageProcessor(
+                image_path=image_path,
+                operation_type='none',
+                filter_type=filter_type,
+                filter_params=filter_params,
+                segmentation_type=self.get_selected_segmentation(),
+                segmentation_params=self.get_segmentation_parameters(),
+                noise_level=self.noise_slider.value() if self.noise_checkbox.isChecked() else 0,
+                apply_noise=self.noise_checkbox.isChecked()
+            )
+            
+            self.image_processor.started.connect(self.processing_started)
+            self.image_processor.finished.connect(self.processing_finished)
+            self.image_processor.image_updated.connect(self.on_current_tab_image_updated)
+            
+            self.image_processor.start()
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al iniciar procesamiento: {str(e)}")
+
+    def on_current_tab_image_updated(self, q_image):
+        """Update the current tab with processed image"""
+        current_tab = self.get_current_tab_data()
+        if current_tab:
+            try:
+                # Convert QImage to numpy array for storage
+                width = q_image.width()
+                height = q_image.height()
+                
+                # Get image format and handle different formats
+                if q_image.format() == QImage.Format.Format_RGB888:
+                    # RGB format - 3 channels
+                    ptr = q_image.bits()
+                    ptr.setsize(height * width * 3)
+                    arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 3))
+                    # Convert RGB to BGR for OpenCV
+                    current_img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                elif q_image.format() == QImage.Format.Format_ARGB32 or q_image.format() == QImage.Format.Format_RGBA8888:
+                    # ARGB/RGBA format - 4 channels
+                    ptr = q_image.bits()
+                    ptr.setsize(height * width * 4)
+                    arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+                    # Convert RGBA to BGR, removing alpha channel
+                    current_img = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+                elif q_image.format() == QImage.Format.Format_Grayscale8:
+                    # Grayscale format
+                    ptr = q_image.bits()
+                    ptr.setsize(height * width)
+                    current_img = np.frombuffer(ptr, np.uint8).reshape((height, width))
+                else:
+                    # Convert to RGB first if unknown format
+                    q_image_rgb = q_image.convertToFormat(QImage.Format.Format_RGB888)
+                    ptr = q_image_rgb.bits()
+                    ptr.setsize(height * width * 3)
+                    arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 3))
+                    current_img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+                
+                current_tab['current_image'] = current_img
+                current_tab['status_label'].setText("🔄 Procesada")
+                
+                # Update display
+                scaled_pixmap = QPixmap.fromImage(q_image).scaled(
+                    current_tab['image_label'].size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                current_tab['image_label'].setPixmap(scaled_pixmap)
+                
+            except Exception as e:
+                print(f"Error updating image: {e}")
+                # Fallback: just update the display without storing the processed version
+                scaled_pixmap = QPixmap.fromImage(q_image).scaled(
+                    current_tab['image_label'].size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                current_tab['image_label'].setPixmap(scaled_pixmap)
+                current_tab['status_label'].setText("⚠️ Error conversión")
+
+    def apply_two_image_operation(self):
+        """Apply operation between two images from different tabs"""
+        if len(self.image_tabs) < 2:
+            QMessageBox.warning(self, "Advertencia", "Se necesitan al menos 2 imágenes para realizar operaciones.")
+            return
+        
+        # Get first two images
+        tab_ids = list(self.image_tabs.keys())
+        tab1_data = self.image_tabs[tab_ids[0]]
+        tab2_data = self.image_tabs[tab_ids[1]]
+        
+        # Get selected operations
+        arithmetic_op = self.arithmetic_combo.currentText()
+        logical_op = self.logical_combo.currentText()
+        
+        operation_type = 'none'
+        if arithmetic_op != "Ninguna":
+            operation_map = {
+                "Suma": "suma", "Resta": "resta", "Multiplicación": "multiplicacion",
+                "División": "division", "Promedio": "promedio", "Diferencia": "diferencia"
+            }
+            operation_type = operation_map.get(arithmetic_op, 'none')
+        elif logical_op != "Ninguna":
+            operation_map = {
+                "AND": "and", "OR": "or", "XOR": "xor", "NOT": "not"
+            }
+            operation_type = operation_map.get(logical_op, 'none')
+        
+        if operation_type != 'none':
+            try:
+                self.image_processor = ImageProcessor(
+                    image_path=tab1_data['image_path'],
+                    second_image_path=tab2_data['image_path'],
+                    operation_type=operation_type,
+                    filter_type='none',
+                    segmentation_type='none'
+                )
+                
+                self.image_processor.started.connect(self.processing_started)
+                self.image_processor.finished.connect(self.processing_finished)
+                self.image_processor.image_updated.connect(self.on_operation_result)
+                
+                self.image_processor.start()
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error en operación: {str(e)}")
+
+    def on_operation_result(self, q_image):
+        """Create new tab with operation result"""
+        try:
+            # Create new tab for result
+            operation_name = f"Resultado_{self.tab_counter + 1}"
+            
+            # Convert QImage to numpy array with proper error handling
+            width = q_image.width()
+            height = q_image.height()
+            
+            # Handle different image formats safely
+            if q_image.format() == QImage.Format.Format_RGB888:
+                ptr = q_image.bits()
+                ptr.setsize(height * width * 3)
+                arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 3))
+                result_img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            elif q_image.format() == QImage.Format.Format_ARGB32 or q_image.format() == QImage.Format.Format_RGBA8888:
+                ptr = q_image.bits()
+                ptr.setsize(height * width * 4)
+                arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+                result_img = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+            elif q_image.format() == QImage.Format.Format_Grayscale8:
+                ptr = q_image.bits()
+                ptr.setsize(height * width)
+                result_img = np.frombuffer(ptr, np.uint8).reshape((height, width))
+            else:
+                # Convert to RGB first
+                q_image_rgb = q_image.convertToFormat(QImage.Format.Format_RGB888)
+                ptr = q_image_rgb.bits()
+                ptr.setsize(height * width * 3)
+                arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 3))
+                result_img = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            
+            # Create result tab with a placeholder path
+            placeholder_path = f"temp_{operation_name}.png"
+            self.create_image_tab(placeholder_path, result_img, operation_name)
+            self.results_text.append(f"✅ Operación completada: {operation_name}")
+            
+        except Exception as e:
+            print(f"Error creating operation result: {e}")
+            self.results_text.append(f"❌ Error en operación: {str(e)}")
 
     def create_properties_panel(self, parent_layout):
         """Panel de propiedades y resultados"""
@@ -789,142 +1734,6 @@ class ImageProcessingApp(AnimatedWidget):
         
         parent_layout.addWidget(props_panel)
 
-    def show_filter_info(self):
-        if self.info_window is None:
-            self.info_window = FilterInfoWindow(self)
-        self.info_window.show()
-        self.info_window.raise_()
-
-    def load_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.image_path = file_path
-            self.original_image = cv2.imread(file_path)
-            
-            if self.original_image is not None:
-                self.display_image(self.original_image)
-                
-                # Update UI state
-                self.update_ui_state()
-                
-                # Update information
-                h, w = self.original_image.shape[:2]
-                info_text = f"Imagen: {os.path.basename(file_path)}\n"
-                info_text += f"Tamaño: {w} × {h}\n"
-                info_text += f"Canales: {self.original_image.shape[2] if len(self.original_image.shape) > 2 else 1}"
-                self.image_info_label.setText(info_text)
-                
-                self.results_text.append(f"✓ Imagen cargada: {os.path.basename(file_path)}")
-                
-                # Update pipeline visualization
-                self.update_pipeline_visualization()
-                
-                # Start real-time processing
-                self.schedule_realtime_processing()
-
-    def load_second_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Segunda Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.second_image_path = file_path
-            self.second_image = cv2.imread(file_path)
-            
-            if self.second_image is not None:
-                # Update UI state
-                self.update_ui_state()
-                self.results_text.append(f"✓ Segunda imagen: {os.path.basename(file_path)}")
-
-    def display_image(self, img):
-        if len(img.shape) == 2:
-            h, w = img.shape
-            q_image = QImage(img.data, w, h, w, QImage.Format.Format_Grayscale8)
-        else:
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            q_image = QImage(rgb_image.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        
-        # Usar QPixmap para la visualización
-        pixmap = QPixmap.fromImage(q_image)
-        scaled_pixmap = pixmap.scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-
-    def create_preprocessing_menu(self):
-        section = MenuSection("Preprocessing")
-        
-        # Noise simulation
-        noise_frame = QFrame()
-        noise_layout = QVBoxLayout(noise_frame)
-        noise_layout.setContentsMargins(0, 0, 0, 0)
-        noise_layout.setSpacing(8)
-        
-        self.noise_checkbox = QCheckBox("Add Gaussian Noise")
-        self.noise_checkbox.setObjectName("ModernCheckbox")
-        
-        noise_control = QFrame()
-        noise_control_layout = QHBoxLayout(noise_control)
-        noise_control_layout.setContentsMargins(0, 0, 0, 0)
-        noise_control_layout.setSpacing(8)
-        
-        self.noise_slider = QSlider(Qt.Orientation.Horizontal)
-        self.noise_slider.setObjectName("ModernSlider")
-        self.noise_slider.setRange(0, 50)
-        self.noise_slider.setValue(10)
-        self.noise_slider.setEnabled(False)
-        
-        self.noise_value_label = QLabel("10")
-        self.noise_value_label.setObjectName("ValueLabel")
-        self.noise_value_label.setFixedWidth(30)
-        
-        noise_control_layout.addWidget(self.noise_slider)
-        noise_control_layout.addWidget(self.noise_value_label)
-        
-        self.noise_checkbox.toggled.connect(self.noise_slider.setEnabled)
-        self.noise_slider.valueChanged.connect(lambda v: self.noise_value_label.setText(str(v)))
-        
-        noise_layout.addWidget(self.noise_checkbox)
-        noise_layout.addWidget(noise_control)
-        
-        section.add_item(noise_frame)
-        
-        # Smoothing filters
-        section.add_item(QLabel("Smoothing Filter"))
-        self.smoothing_combo = QComboBox()
-        self.smoothing_combo.setObjectName("ModernCombo")
-        self.smoothing_combo.addItems([
-            "None", "Average", "Weighted Average", "Median", 
-            "Mode", "Bilateral", "Gaussian"
-        ])
-        section.add_item(self.smoothing_combo)
-        
-        # Kernel size
-        kernel_frame = QFrame()
-        kernel_layout = QHBoxLayout(kernel_frame)
-        kernel_layout.setContentsMargins(0, 0, 0, 0)
-        kernel_layout.setSpacing(8)
-        
-        kernel_layout.addWidget(QLabel("Kernel Size"))
-        self.kernel_spin = QSpinBox()
-        self.kernel_spin.setObjectName("ModernSpin")
-        self.kernel_spin.setRange(3, 15)
-        self.kernel_spin.setValue(5)
-        self.kernel_spin.setSingleStep(2)
-        kernel_layout.addWidget(self.kernel_spin)
-        
-        section.add_item(kernel_frame)
-        
-        return section
-
     def get_selected_filter(self):
         """Get the currently selected filter type"""
         filter_map = {
@@ -1049,2089 +1858,234 @@ class ImageProcessingApp(AnimatedWidget):
         
         return params
 
-    def process_image_realtime(self):
-        """Process image in real-time with optimization"""
-        if not self.image_path or self.is_processing:
-            self.pending_update = True
-            return
-        self.start_processing_optimized()
-
-    def save_image(self):
-        """Save the processed image"""
-        if self.current_processed_image:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Guardar Imagen Procesada", "",
-                "PNG (*.png);;JPEG (*.jpg);;Todos los archivos (*)"
-            )
-            
-            if file_path:
-                success = self.current_processed_image.save(file_path)
-                if success:
-                    self.results_text.append(f"💾 Imagen guardada: {os.path.basename(file_path)}")
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
-        else:
-            QMessageBox.information(self, "Información", "No hay imagen procesada para guardar.")
-
-    def processing_started(self):
-        """Called when processing starts"""
-        self.process_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.progress_bar.show()
-        self.operation_label.setText("Procesando...")
-        self.results_text.append("🚀 Procesando imagen...")
-
-    def processing_finished(self):
-        """Called when processing finishes"""
-        self.process_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.save_button.setEnabled(True)
-        self.progress_bar.hide()
-        self.operation_label.setText("Listo")
-        self.results_text.append("✅ Procesamiento completado")
-        
-        if self.image_processor:
-            # Use deleteLater for proper Qt cleanup
-            self.image_processor.deleteLater()
-            self.image_processor = None
-
-    def on_image_updated(self, q_image):
-        """Called when processed image is ready"""
-        scaled_pixmap = QPixmap.fromImage(q_image).scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-        self.current_processed_image = q_image
-
-    def start_processing(self):
-        """Start image processing with current settings"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        filter_type = "none"
-        filter_params = self.get_filter_parameters()
-        
-        edge_filter = self.get_selected_edge_detection()
-        if edge_filter != "none":
-            filter_type = edge_filter
-        else:
-            morph_filter = self.get_selected_morphological()
-            if morph_filter != "none":
-                filter_type = morph_filter
-            else:
-                smoothing_filter = self.get_selected_filter()
-                if smoothing_filter != "none":
-                    filter_type = smoothing_filter
-
-        try:
-            self.image_processor = ImageProcessor(
-                image_path=self.image_path,
-                second_image_path=self.second_image_path,
-                operation_type='none',
-                filter_type=filter_type,
-                filter_params=filter_params,
-                segmentation_type=self.get_selected_segmentation(),
-                segmentation_params=self.get_segmentation_parameters(),
-                noise_level=self.noise_slider.value() if self.noise_checkbox.isChecked() else 0,
-                apply_noise=self.noise_checkbox.isChecked()
-            )
-            
-            self.image_processor.started.connect(self.processing_started)
-            self.image_processor.finished.connect(self.processing_finished)
-            self.image_processor.image_updated.connect(self.on_image_updated)
-            
-            self.image_processor.start()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al iniciar procesamiento: {str(e)}")
-
-    def stop_processing(self):
-        """Stop current processing"""
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            
-            self.processing_finished()
-            self.results_text.append("⏹️ Procesamiento detenido por el usuario")
-
-    def calculate_automatic_parameters(self):
-        """Calcular parámetros automáticos para la imagen actual"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        self.cleanup_temp_processors()
-        
-        temp_processor = ImageProcessor(
-            image_path=self.image_path,
-            filter_type='none',
-            segmentation_type='none'
-        )
-        temp_processor.calculate_auto_params = True
-        temp_processor.parameters_calculated.connect(self.apply_automatic_parameters)
-        temp_processor.finished.connect(lambda: self.cleanup_temp_processor(temp_processor))
-        
-        self.temp_processors.append(temp_processor)
-        temp_processor.start()
-
-    def apply_automatic_parameters(self, params):
-        """Aplicar parámetros calculados automáticamente"""
-        old_timer_state = self.processing_timer.isActive()
-        self.processing_timer.stop()
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider:
-                self.canny_low_slider.setValue(params.get('canny_low', 50))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider:
-                self.canny_high_slider.setValue(params.get('canny_high', 150))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin:
-                self.kernel_spin.setValue(params.get('kernel_size', 5))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider:
-                self.adaptive_block_slider.setValue(params.get('adaptive_block_size', 11))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider:
-                self.bilateral_color_slider.setValue(int(params.get('bilateral_sigma_color', 80)))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin:
-                self.bilateral_d_spin.setValue(params.get('bilateral_d', 9))
-        except RuntimeError:
-            pass
-        
-        # Apply optimal multi-otsu classes if available
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin:
-                optimal_classes = params.get('optimal_multi_otsu_classes', 3)
-                self.num_classes_spin.setValue(optimal_classes)
-                if optimal_classes != 3:
-                    self.results_text.append(f"🎯 Clases óptimas para Multi-Otsu: {optimal_classes}")
-        except RuntimeError:
-            pass
-        
-        self.results_text.append("🤖 Parámetros calculados automáticamente")
-        
-        if old_timer_state or self.image_path:
-            self.schedule_realtime_processing()
-
-    def cleanup_temp_processors(self):
-        """Clean up finished temporary processors"""
-        for processor in self.temp_processors[:]:
-            if processor and not processor.isRunning():
-                self.temp_processors.remove(processor)
-
-    def cleanup_temp_processor(self, processor):
-        """Clean up a specific temporary processor"""
-        if processor in self.temp_processors:
-            self.temp_processors.remove(processor)
-        # Use deleteLater for proper Qt cleanup
-        processor.deleteLater()
-
     def on_filter_changed(self):
         """Called when any filter/segmentation setting changes"""
         self.update_dynamic_parameters()
-        self.update_pipeline_visualization()  # Add this line
+        self.update_pipeline_visualization()
         self.schedule_realtime_processing()
 
-    def schedule_realtime_processing(self):
-        """Schedule real-time processing with debouncing"""
-        if not self.image_path:
-            return
-        self.processing_timer.stop()
-        self.processing_timer.start()
-        # Also update pipeline when scheduling processing
-        self.update_pipeline_visualization()
-
-    def load_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.image_path = file_path
-            self.original_image = cv2.imread(file_path)
-            
-            if self.original_image is not None:
-                self.display_image(self.original_image)
-                
-                # Update UI state
-                self.update_ui_state()
-                
-                # Update information
-                h, w = self.original_image.shape[:2]
-                info_text = f"Imagen: {os.path.basename(file_path)}\n"
-                info_text += f"Tamaño: {w} × {h}\n"
-                info_text += f"Canales: {self.original_image.shape[2] if len(self.original_image.shape) > 2 else 1}"
-                self.image_info_label.setText(info_text)
-                
-                self.results_text.append(f"✓ Imagen cargada: {os.path.basename(file_path)}")
-                
-                # Update pipeline visualization
-                self.update_pipeline_visualization()
-                
-                # Start real-time processing
-                self.schedule_realtime_processing()
-
-    def load_second_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Segunda Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.second_image_path = file_path
-            self.second_image = cv2.imread(file_path)
-            
-            if self.second_image is not None:
-                # Update UI state
-                self.update_ui_state()
-                self.results_text.append(f"✓ Segunda imagen: {os.path.basename(file_path)}")
-
-    def display_image(self, img):
-        if len(img.shape) == 2:
-            h, w = img.shape
-            q_image = QImage(img.data, w, h, w, QImage.Format.Format_Grayscale8)
-        else:
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            q_image = QImage(rgb_image.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        
-        # Usar QPixmap para la visualización
-        pixmap = QPixmap.fromImage(q_image)
-        scaled_pixmap = pixmap.scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-
-    def create_preprocessing_menu(self):
-        section = MenuSection("Preprocessing")
-        
-        # Noise simulation
-        noise_frame = QFrame()
-        noise_layout = QVBoxLayout(noise_frame)
-        noise_layout.setContentsMargins(0, 0, 0, 0)
-        noise_layout.setSpacing(8)
-        
-        self.noise_checkbox = QCheckBox("Add Gaussian Noise")
-        self.noise_checkbox.setObjectName("ModernCheckbox")
-        
-        noise_control = QFrame()
-        noise_control_layout = QHBoxLayout(noise_control)
-        noise_control_layout.setContentsMargins(0, 0, 0, 0)
-        noise_control_layout.setSpacing(8)
-        
-        self.noise_slider = QSlider(Qt.Orientation.Horizontal)
-        self.noise_slider.setObjectName("ModernSlider")
-        self.noise_slider.setRange(0, 50)
-        self.noise_slider.setValue(10)
-        self.noise_slider.setEnabled(False)
-        
-        self.noise_value_label = QLabel("10")
-        self.noise_value_label.setObjectName("ValueLabel")
-        self.noise_value_label.setFixedWidth(30)
-        
-        noise_control_layout.addWidget(self.noise_slider)
-        noise_control_layout.addWidget(self.noise_value_label)
-        
-        self.noise_checkbox.toggled.connect(self.noise_slider.setEnabled)
-        self.noise_slider.valueChanged.connect(lambda v: self.noise_value_label.setText(str(v)))
-        
-        noise_layout.addWidget(self.noise_checkbox)
-        noise_layout.addWidget(noise_control)
-        
-        section.add_item(noise_frame)
-        
-        # Smoothing filters
-        section.add_item(QLabel("Smoothing Filter"))
-        self.smoothing_combo = QComboBox()
-        self.smoothing_combo.setObjectName("ModernCombo")
-        self.smoothing_combo.addItems([
-            "None", "Average", "Weighted Average", "Median", 
-            "Mode", "Bilateral", "Gaussian"
-        ])
-        section.add_item(self.smoothing_combo)
-        
-        # Kernel size
-        kernel_frame = QFrame()
-        kernel_layout = QHBoxLayout(kernel_frame)
-        kernel_layout.setContentsMargins(0, 0, 0, 0)
-        kernel_layout.setSpacing(8)
-        
-        kernel_layout.addWidget(QLabel("Kernel Size"))
-        self.kernel_spin = QSpinBox()
-        self.kernel_spin.setObjectName("ModernSpin")
-        self.kernel_spin.setRange(3, 15)
-        self.kernel_spin.setValue(5)
-        self.kernel_spin.setSingleStep(2)
-        kernel_layout.addWidget(self.kernel_spin)
-        
-        section.add_item(kernel_frame)
-        
-        return section
-
-    def get_selected_filter(self):
-        """Get the currently selected filter type"""
-        filter_map = {
-            "Ninguno": "none",
-            "Promedio": "averaging", 
-            "Promedio Pesado": "weighted_averaging",
-            "Mediana": "median",
-            "Moda": "mode",
-            "Bilateral": "bilateral",
-            "Gaussiano": "gaussian"
-        }
-        return filter_map.get(self.smoothing_combo.currentText(), "none")
-
-    def get_selected_edge_detection(self):
-        """Get the currently selected edge detection type"""
-        edge_map = {
-            "Ninguno": "none",
-            "Roberts": "roberts",
-            "Prewitt": "prewitt", 
-            "Sobel": "sobel",
-            "Robinson": "robinson",
-            "Kirsch": "kirsch",
-            "Canny": "canny",
-            "Laplaciano": "laplacian"
-        }
-        return edge_map.get(self.edge_combo.currentText(), "none")
-
-    def get_selected_morphological(self):
-        """Get the currently selected morphological operation"""
-        morph_map = {
-            "Ninguno": "none",
-            "Máximo": "max",
-            "Mínimo": "min"
-        }
-        return morph_map.get(self.morphological_combo.currentText(), "none")
-
-    def get_selected_segmentation(self):
-        """Get the currently selected segmentation type"""
-        seg_map = {
-            "Ninguno": "none",
-            "Umbral Media": "mean",
-            "Otsu": "otsu",
-            "Multi-Otsu": "multi_otsu",
-            "Entropía Kapur": "kapur", 
-            "Umbral Banda": "band",
-            "Adaptativo": "adaptive",
-            "Mín. Histograma": "histogram_min"
-        }
-        return seg_map.get(self.segmentation_combo.currentText(), "none")
-
-    def get_filter_parameters(self):
-        """Obtener parámetros dinámicos actuales"""
-        params = {}
-        
-        # Check if widgets exist and are valid before accessing them
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin and not self.kernel_spin.isHidden():
-                params['kernel_size'] = self.kernel_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider and not self.canny_low_slider.isHidden():
-                params['low_threshold'] = self.canny_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider and not self.canny_high_slider.isHidden():
-                params['high_threshold'] = self.canny_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin and not self.bilateral_d_spin.isHidden():
-                params['d'] = self.bilateral_d_spin.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider and not self.bilateral_color_slider.isHidden():
-                params['sigma_color'] = self.bilateral_color_slider.value()
-                params['sigma_space'] = self.bilateral_color_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'gaussian_sigma_slider') and self.gaussian_sigma_slider and not self.gaussian_sigma_slider.isHidden():
-                params['sigma'] = self.gaussian_sigma_slider.value() / 10.0
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def get_segmentation_parameters(self):
-        """Obtener parámetros de segmentación dinámicos"""
-        params = {}
-        
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin and not self.num_classes_spin.isHidden():
-                params['num_thresholds'] = self.num_classes_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'band_low_slider') and self.band_low_slider and not self.band_low_slider.isHidden():
-                params['low_threshold'] = self.band_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'band_high_slider') and self.band_high_slider and not self.band_high_slider.isHidden():
-                params['high_threshold'] = self.band_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider and not self.adaptive_block_slider.isHidden():
-                params['block_size'] = self.adaptive_block_slider.value()
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def process_image_realtime(self):
-        """Process image in real-time with optimization"""
-        if not self.image_path or self.is_processing:
-            self.pending_update = True
-            return
-        self.start_processing_optimized()
-
-    def save_image(self):
-        """Save the processed image"""
-        if self.current_processed_image:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Guardar Imagen Procesada", "",
-                "PNG (*.png);;JPEG (*.jpg);;Todos los archivos (*)"
-            )
-            
-            if file_path:
-                success = self.current_processed_image.save(file_path)
-                if success:
-                    self.results_text.append(f"💾 Imagen guardada: {os.path.basename(file_path)}")
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
-        else:
-            QMessageBox.information(self, "Información", "No hay imagen procesada para guardar.")
-
-    def processing_started(self):
-        """Called when processing starts"""
-        self.process_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.progress_bar.show()
-        self.operation_label.setText("Procesando...")
-        self.results_text.append("🚀 Procesando imagen...")
-
-    def processing_finished(self):
-        """Called when processing finishes"""
-        self.process_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.save_button.setEnabled(True)
-        self.progress_bar.hide()
-        self.operation_label.setText("Listo")
-        self.results_text.append("✅ Procesamiento completado")
-        
-        if self.image_processor:
-            # Use deleteLater for proper Qt cleanup
-            self.image_processor.deleteLater()
-            self.image_processor = None
-
-    def on_image_updated(self, q_image):
-        """Called when processed image is ready"""
-        scaled_pixmap = QPixmap.fromImage(q_image).scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-        self.current_processed_image = q_image
-
-    def start_processing(self):
-        """Start image processing with current settings"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        filter_type = "none"
-        filter_params = self.get_filter_parameters()
-        
-        edge_filter = self.get_selected_edge_detection()
-        if edge_filter != "none":
-            filter_type = edge_filter
-        else:
-            morph_filter = self.get_selected_morphological()
-            if morph_filter != "none":
-                filter_type = morph_filter
-            else:
-                smoothing_filter = self.get_selected_filter()
-                if smoothing_filter != "none":
-                    filter_type = smoothing_filter
-
-        try:
-            self.image_processor = ImageProcessor(
-                image_path=self.image_path,
-                second_image_path=self.second_image_path,
-                operation_type='none',
-                filter_type=filter_type,
-                filter_params=filter_params,
-                segmentation_type=self.get_selected_segmentation(),
-                segmentation_params=self.get_segmentation_parameters(),
-                noise_level=self.noise_slider.value() if self.noise_checkbox.isChecked() else 0,
-                apply_noise=self.noise_checkbox.isChecked()
-            )
-            
-            self.image_processor.started.connect(self.processing_started)
-            self.image_processor.finished.connect(self.processing_finished)
-            self.image_processor.image_updated.connect(self.on_image_updated)
-            
-            self.image_processor.start()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al iniciar procesamiento: {str(e)}")
-
-    def stop_processing(self):
-        """Stop current processing"""
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            
-            self.processing_finished()
-            self.results_text.append("⏹️ Procesamiento detenido por el usuario")
-
-    def calculate_automatic_parameters(self):
-        """Calcular parámetros automáticos para la imagen actual"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        self.cleanup_temp_processors()
-        
-        temp_processor = ImageProcessor(
-            image_path=self.image_path,
-            filter_type='none',
-            segmentation_type='none'
-        )
-        temp_processor.calculate_auto_params = True
-        temp_processor.parameters_calculated.connect(self.apply_automatic_parameters)
-        temp_processor.finished.connect(lambda: self.cleanup_temp_processor(temp_processor))
-        
-        self.temp_processors.append(temp_processor)
-        temp_processor.start()
-
-    def apply_automatic_parameters(self, params):
-        """Aplicar parámetros calculados automáticamente"""
-        old_timer_state = self.processing_timer.isActive()
-        self.processing_timer.stop()
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider:
-                self.canny_low_slider.setValue(params.get('canny_low', 50))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider:
-                self.canny_high_slider.setValue(params.get('canny_high', 150))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin:
-                self.kernel_spin.setValue(params.get('kernel_size', 5))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider:
-                self.adaptive_block_slider.setValue(params.get('adaptive_block_size', 11))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider:
-                self.bilateral_color_slider.setValue(int(params.get('bilateral_sigma_color', 80)))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin:
-                self.bilateral_d_spin.setValue(params.get('bilateral_d', 9))
-        except RuntimeError:
-            pass
-        
-        # Apply optimal multi-otsu classes if available
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin:
-                optimal_classes = params.get('optimal_multi_otsu_classes', 3)
-                self.num_classes_spin.setValue(optimal_classes)
-                if optimal_classes != 3:
-                    self.results_text.append(f"🎯 Clases óptimas para Multi-Otsu: {optimal_classes}")
-        except RuntimeError:
-            pass
-        
-        self.results_text.append("🤖 Parámetros calculados automáticamente")
-        
-        if old_timer_state or self.image_path:
-            self.schedule_realtime_processing()
-
-    def cleanup_temp_processors(self):
-        """Clean up finished temporary processors"""
-        for processor in self.temp_processors[:]:
-            if processor and not processor.isRunning():
-                self.temp_processors.remove(processor)
-
-    def cleanup_temp_processor(self, processor):
-        """Clean up a specific temporary processor"""
-        if processor in self.temp_processors:
-            self.temp_processors.remove(processor)
-        # Use deleteLater for proper Qt cleanup
-        processor.deleteLater()
-
-    def on_filter_changed(self):
-        """Called when any filter/segmentation setting changes"""
-        self.update_dynamic_parameters()
-        self.update_pipeline_visualization()  # Add this line
-        self.schedule_realtime_processing()
-
-    def schedule_realtime_processing(self):
-        """Schedule real-time processing with debouncing"""
-        if not self.image_path:
-            return
-        self.processing_timer.stop()
-        self.processing_timer.start()
-        # Also update pipeline when scheduling processing
-        self.update_pipeline_visualization()
-
-    def load_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.image_path = file_path
-            self.original_image = cv2.imread(file_path)
-            
-            if self.original_image is not None:
-                self.display_image(self.original_image)
-                
-                # Update UI state
-                self.update_ui_state()
-                
-                # Update information
-                h, w = self.original_image.shape[:2]
-                info_text = f"Imagen: {os.path.basename(file_path)}\n"
-                info_text += f"Tamaño: {w} × {h}\n"
-                info_text += f"Canales: {self.original_image.shape[2] if len(self.original_image.shape) > 2 else 1}"
-                self.image_info_label.setText(info_text)
-                
-                self.results_text.append(f"✓ Imagen cargada: {os.path.basename(file_path)}")
-                
-                # Update pipeline visualization
-                self.update_pipeline_visualization()
-                
-                # Start real-time processing
-                self.schedule_realtime_processing()
-
-    def load_second_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Segunda Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.second_image_path = file_path
-            self.second_image = cv2.imread(file_path)
-            
-            if self.second_image is not None:
-                # Update UI state
-                self.update_ui_state()
-                self.results_text.append(f"✓ Segunda imagen: {os.path.basename(file_path)}")
-
-    def display_image(self, img):
-        if len(img.shape) == 2:
-            h, w = img.shape
-            q_image = QImage(img.data, w, h, w, QImage.Format.Format_Grayscale8)
-        else:
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            q_image = QImage(rgb_image.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        
-        # Usar QPixmap para la visualización
-        pixmap = QPixmap.fromImage(q_image)
-        scaled_pixmap = pixmap.scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-
-    def create_preprocessing_menu(self):
-        section = MenuSection("Preprocessing")
-        
-        # Noise simulation
-        noise_frame = QFrame()
-        noise_layout = QVBoxLayout(noise_frame)
-        noise_layout.setContentsMargins(0, 0, 0, 0)
-        noise_layout.setSpacing(8)
-        
-        self.noise_checkbox = QCheckBox("Add Gaussian Noise")
-        self.noise_checkbox.setObjectName("ModernCheckbox")
-        
-        noise_control = QFrame()
-        noise_control_layout = QHBoxLayout(noise_control)
-        noise_control_layout.setContentsMargins(0, 0, 0, 0)
-        noise_control_layout.setSpacing(8)
-        
-        self.noise_slider = QSlider(Qt.Orientation.Horizontal)
-        self.noise_slider.setObjectName("ModernSlider")
-        self.noise_slider.setRange(0, 50)
-        self.noise_slider.setValue(10)
-        self.noise_slider.setEnabled(False)
-        
-        self.noise_value_label = QLabel("10")
-        self.noise_value_label.setObjectName("ValueLabel")
-        self.noise_value_label.setFixedWidth(30)
-        
-        noise_control_layout.addWidget(self.noise_slider)
-        noise_control_layout.addWidget(self.noise_value_label)
-        
-        self.noise_checkbox.toggled.connect(self.noise_slider.setEnabled)
-        self.noise_slider.valueChanged.connect(lambda v: self.noise_value_label.setText(str(v)))
-        
-        noise_layout.addWidget(self.noise_checkbox)
-        noise_layout.addWidget(noise_control)
-        
-        section.add_item(noise_frame)
-        
-        # Smoothing filters
-        section.add_item(QLabel("Smoothing Filter"))
-        self.smoothing_combo = QComboBox()
-        self.smoothing_combo.setObjectName("ModernCombo")
-        self.smoothing_combo.addItems([
-            "None", "Average", "Weighted Average", "Median", 
-            "Mode", "Bilateral", "Gaussian"
-        ])
-        section.add_item(self.smoothing_combo)
-        
-        # Kernel size
-        kernel_frame = QFrame()
-        kernel_layout = QHBoxLayout(kernel_frame)
-        kernel_layout.setContentsMargins(0, 0, 0, 0)
-        kernel_layout.setSpacing(8)
-        
-        kernel_layout.addWidget(QLabel("Kernel Size"))
-        self.kernel_spin = QSpinBox()
-        self.kernel_spin.setObjectName("ModernSpin")
-        self.kernel_spin.setRange(3, 15)
-        self.kernel_spin.setValue(5)
-        self.kernel_spin.setSingleStep(2)
-        kernel_layout.addWidget(self.kernel_spin)
-        
-        section.add_item(kernel_frame)
-        
-        return section
-
-    def get_selected_filter(self):
-        """Get the currently selected filter type"""
-        filter_map = {
-            "Ninguno": "none",
-            "Promedio": "averaging", 
-            "Promedio Pesado": "weighted_averaging",
-            "Mediana": "median",
-            "Moda": "mode",
-            "Bilateral": "bilateral",
-            "Gaussiano": "gaussian"
-        }
-        return filter_map.get(self.smoothing_combo.currentText(), "none")
-
-    def get_selected_edge_detection(self):
-        """Get the currently selected edge detection type"""
-        edge_map = {
-            "Ninguno": "none",
-            "Roberts": "roberts",
-            "Prewitt": "prewitt", 
-            "Sobel": "sobel",
-            "Robinson": "robinson",
-            "Kirsch": "kirsch",
-            "Canny": "canny",
-            "Laplaciano": "laplacian"
-        }
-        return edge_map.get(self.edge_combo.currentText(), "none")
-
-    def get_selected_morphological(self):
-        """Get the currently selected morphological operation"""
-        morph_map = {
-            "Ninguno": "none",
-            "Máximo": "max",
-            "Mínimo": "min"
-        }
-        return morph_map.get(self.morphological_combo.currentText(), "none")
-
-    def get_selected_segmentation(self):
-        """Get the currently selected segmentation type"""
-        seg_map = {
-            "Ninguno": "none",
-            "Umbral Media": "mean",
-            "Otsu": "otsu",
-            "Multi-Otsu": "multi_otsu",
-            "Entropía Kapur": "kapur", 
-            "Umbral Banda": "band",
-            "Adaptativo": "adaptive",
-            "Mín. Histograma": "histogram_min"
-        }
-        return seg_map.get(self.segmentation_combo.currentText(), "none")
-
-    def get_filter_parameters(self):
-        """Obtener parámetros dinámicos actuales"""
-        params = {}
-        
-        # Check if widgets exist and are valid before accessing them
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin and not self.kernel_spin.isHidden():
-                params['kernel_size'] = self.kernel_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider and not self.canny_low_slider.isHidden():
-                params['low_threshold'] = self.canny_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider and not self.canny_high_slider.isHidden():
-                params['high_threshold'] = self.canny_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin and not self.bilateral_d_spin.isHidden():
-                params['d'] = self.bilateral_d_spin.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider and not self.bilateral_color_slider.isHidden():
-                params['sigma_color'] = self.bilateral_color_slider.value()
-                params['sigma_space'] = self.bilateral_color_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'gaussian_sigma_slider') and self.gaussian_sigma_slider and not self.gaussian_sigma_slider.isHidden():
-                params['sigma'] = self.gaussian_sigma_slider.value() / 10.0
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def get_segmentation_parameters(self):
-        """Obtener parámetros de segmentación dinámicos"""
-        params = {}
-        
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin and not self.num_classes_spin.isHidden():
-                params['num_thresholds'] = self.num_classes_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'band_low_slider') and self.band_low_slider and not self.band_low_slider.isHidden():
-                params['low_threshold'] = self.band_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'band_high_slider') and self.band_high_slider and not self.band_high_slider.isHidden():
-                params['high_threshold'] = self.band_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider and not self.adaptive_block_slider.isHidden():
-                params['block_size'] = self.adaptive_block_slider.value()
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def process_image_realtime(self):
-        """Process image in real-time with optimization"""
-        if not self.image_path or self.is_processing:
-            self.pending_update = True
-            return
-        self.start_processing_optimized()
-
-    def save_image(self):
-        """Save the processed image"""
-        if self.current_processed_image:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Guardar Imagen Procesada", "",
-                "PNG (*.png);;JPEG (*.jpg);;Todos los archivos (*)"
-            )
-            
-            if file_path:
-                success = self.current_processed_image.save(file_path)
-                if success:
-                    self.results_text.append(f"💾 Imagen guardada: {os.path.basename(file_path)}")
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
-        else:
-            QMessageBox.information(self, "Información", "No hay imagen procesada para guardar.")
-
-    def processing_started(self):
-        """Called when processing starts"""
-        self.process_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.progress_bar.show()
-        self.operation_label.setText("Procesando...")
-        self.results_text.append("🚀 Procesando imagen...")
-
-    def processing_finished(self):
-        """Called when processing finishes"""
-        self.process_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.save_button.setEnabled(True)
-        self.progress_bar.hide()
-        self.operation_label.setText("Listo")
-        self.results_text.append("✅ Procesamiento completado")
-        
-        if self.image_processor:
-            # Use deleteLater for proper Qt cleanup
-            self.image_processor.deleteLater()
-            self.image_processor = None
-
-    def on_image_updated(self, q_image):
-        """Called when processed image is ready"""
-        scaled_pixmap = QPixmap.fromImage(q_image).scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-        self.current_processed_image = q_image
-
-    def start_processing(self):
-        """Start image processing with current settings"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        filter_type = "none"
-        filter_params = self.get_filter_parameters()
-        
-        edge_filter = self.get_selected_edge_detection()
-        if edge_filter != "none":
-            filter_type = edge_filter
-        else:
-            morph_filter = self.get_selected_morphological()
-            if morph_filter != "none":
-                filter_type = morph_filter
-            else:
-                smoothing_filter = self.get_selected_filter()
-                if smoothing_filter != "none":
-                    filter_type = smoothing_filter
-
-        try:
-            self.image_processor = ImageProcessor(
-                image_path=self.image_path,
-                second_image_path=self.second_image_path,
-                operation_type='none',
-                filter_type=filter_type,
-                filter_params=filter_params,
-                segmentation_type=self.get_selected_segmentation(),
-                segmentation_params=self.get_segmentation_parameters(),
-                noise_level=self.noise_slider.value() if self.noise_checkbox.isChecked() else 0,
-                apply_noise=self.noise_checkbox.isChecked()
-            )
-            
-            self.image_processor.started.connect(self.processing_started)
-            self.image_processor.finished.connect(self.processing_finished)
-            self.image_processor.image_updated.connect(self.on_image_updated)
-            
-            self.image_processor.start()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al iniciar procesamiento: {str(e)}")
-
-    def stop_processing(self):
-        """Stop current processing"""
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            
-            self.processing_finished()
-            self.results_text.append("⏹️ Procesamiento detenido por el usuario")
-
-    def calculate_automatic_parameters(self):
-        """Calcular parámetros automáticos para la imagen actual"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        self.cleanup_temp_processors()
-        
-        temp_processor = ImageProcessor(
-            image_path=self.image_path,
-            filter_type='none',
-            segmentation_type='none'
-        )
-        temp_processor.calculate_auto_params = True
-        temp_processor.parameters_calculated.connect(self.apply_automatic_parameters)
-        temp_processor.finished.connect(lambda: self.cleanup_temp_processor(temp_processor))
-        
-        self.temp_processors.append(temp_processor)
-        temp_processor.start()
-
-    def apply_automatic_parameters(self, params):
-        """Aplicar parámetros calculados automáticamente"""
-        old_timer_state = self.processing_timer.isActive()
-        self.processing_timer.stop()
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider:
-                self.canny_low_slider.setValue(params.get('canny_low', 50))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider:
-                self.canny_high_slider.setValue(params.get('canny_high', 150))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin:
-                self.kernel_spin.setValue(params.get('kernel_size', 5))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider:
-                self.adaptive_block_slider.setValue(params.get('adaptive_block_size', 11))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider:
-                self.bilateral_color_slider.setValue(int(params.get('bilateral_sigma_color', 80)))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin:
-                self.bilateral_d_spin.setValue(params.get('bilateral_d', 9))
-        except RuntimeError:
-            pass
-        
-        # Apply optimal multi-otsu classes if available
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin:
-                optimal_classes = params.get('optimal_multi_otsu_classes', 3)
-                self.num_classes_spin.setValue(optimal_classes)
-                if optimal_classes != 3:
-                    self.results_text.append(f"🎯 Clases óptimas para Multi-Otsu: {optimal_classes}")
-        except RuntimeError:
-            pass
-        
-        self.results_text.append("🤖 Parámetros calculados automáticamente")
-        
-        if old_timer_state or self.image_path:
-            self.schedule_realtime_processing()
-
-    def cleanup_temp_processors(self):
-        """Clean up finished temporary processors"""
-        for processor in self.temp_processors[:]:
-            if processor and not processor.isRunning():
-                self.temp_processors.remove(processor)
-
-    def cleanup_temp_processor(self, processor):
-        """Clean up a specific temporary processor"""
-        if processor in self.temp_processors:
-            self.temp_processors.remove(processor)
-        # Use deleteLater for proper Qt cleanup
-        processor.deleteLater()
-
-    def on_filter_changed(self):
-        """Called when any filter/segmentation setting changes"""
-        self.update_dynamic_parameters()
-        self.update_pipeline_visualization()  # Add this line
-        self.schedule_realtime_processing()
-
-    def schedule_realtime_processing(self):
-        """Schedule real-time processing with debouncing"""
-        if not self.image_path:
-            return
-        self.processing_timer.stop()
-        self.processing_timer.start()
-        # Also update pipeline when scheduling processing
-        self.update_pipeline_visualization()
-
-    def load_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.image_path = file_path
-            self.original_image = cv2.imread(file_path)
-            
-            if self.original_image is not None:
-                self.display_image(self.original_image)
-                
-                # Update UI state
-                self.update_ui_state()
-                
-                # Update information
-                h, w = self.original_image.shape[:2]
-                info_text = f"Imagen: {os.path.basename(file_path)}\n"
-                info_text += f"Tamaño: {w} × {h}\n"
-                info_text += f"Canales: {self.original_image.shape[2] if len(self.original_image.shape) > 2 else 1}"
-                self.image_info_label.setText(info_text)
-                
-                self.results_text.append(f"✓ Imagen cargada: {os.path.basename(file_path)}")
-                
-                # Update pipeline visualization
-                self.update_pipeline_visualization()
-                
-                # Start real-time processing
-                self.schedule_realtime_processing()
-
-    def load_second_image(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Segunda Imagen", "", 
-            "Archivos de imagen (*.png *.jpg *.jpeg *.bmp *.tiff);;Todos (*)"
-        )
-        
-        if file_path:
-            self.second_image_path = file_path
-            self.second_image = cv2.imread(file_path)
-            
-            if self.second_image is not None:
-                # Update UI state
-                self.update_ui_state()
-                self.results_text.append(f"✓ Segunda imagen: {os.path.basename(file_path)}")
-
-    def display_image(self, img):
-        if len(img.shape) == 2:
-            h, w = img.shape
-            q_image = QImage(img.data, w, h, w, QImage.Format.Format_Grayscale8)
-        else:
-            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            q_image = QImage(rgb_image.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        
-        # Usar QPixmap para la visualización
-        pixmap = QPixmap.fromImage(q_image)
-        scaled_pixmap = pixmap.scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-
-    def create_preprocessing_menu(self):
-        section = MenuSection("Preprocessing")
-        
-        # Noise simulation
-        noise_frame = QFrame()
-        noise_layout = QVBoxLayout(noise_frame)
-        noise_layout.setContentsMargins(0, 0, 0, 0)
-        noise_layout.setSpacing(8)
-        
-        self.noise_checkbox = QCheckBox("Add Gaussian Noise")
-        self.noise_checkbox.setObjectName("ModernCheckbox")
-        
-        noise_control = QFrame()
-        noise_control_layout = QHBoxLayout(noise_control)
-        noise_control_layout.setContentsMargins(0, 0, 0, 0)
-        noise_control_layout.setSpacing(8)
-        
-        self.noise_slider = QSlider(Qt.Orientation.Horizontal)
-        self.noise_slider.setObjectName("ModernSlider")
-        self.noise_slider.setRange(0, 50)
-        self.noise_slider.setValue(10)
-        self.noise_slider.setEnabled(False)
-        
-        self.noise_value_label = QLabel("10")
-        self.noise_value_label.setObjectName("ValueLabel")
-        self.noise_value_label.setFixedWidth(30)
-        
-        noise_control_layout.addWidget(self.noise_slider)
-        noise_control_layout.addWidget(self.noise_value_label)
-        
-        self.noise_checkbox.toggled.connect(self.noise_slider.setEnabled)
-        self.noise_slider.valueChanged.connect(lambda v: self.noise_value_label.setText(str(v)))
-        
-        noise_layout.addWidget(self.noise_checkbox)
-        noise_layout.addWidget(noise_control)
-        
-        section.add_item(noise_frame)
-        
-        # Smoothing filters
-        section.add_item(QLabel("Smoothing Filter"))
-        self.smoothing_combo = QComboBox()
-        self.smoothing_combo.setObjectName("ModernCombo")
-        self.smoothing_combo.addItems([
-            "None", "Average", "Weighted Average", "Median", 
-            "Mode", "Bilateral", "Gaussian"
-        ])
-        section.add_item(self.smoothing_combo)
-        
-        # Kernel size
-        kernel_frame = QFrame()
-        kernel_layout = QHBoxLayout(kernel_frame)
-        kernel_layout.setContentsMargins(0, 0, 0, 0)
-        kernel_layout.setSpacing(8)
-        
-        kernel_layout.addWidget(QLabel("Kernel Size"))
-        self.kernel_spin = QSpinBox()
-        self.kernel_spin.setObjectName("ModernSpin")
-        self.kernel_spin.setRange(3, 15)
-        self.kernel_spin.setValue(5)
-        self.kernel_spin.setSingleStep(2)
-        kernel_layout.addWidget(self.kernel_spin)
-        
-        section.add_item(kernel_frame)
-        
-        return section
-
-    def get_selected_filter(self):
-        """Get the currently selected filter type"""
-        filter_map = {
-            "Ninguno": "none",
-            "Promedio": "averaging", 
-            "Promedio Pesado": "weighted_averaging",
-            "Mediana": "median",
-            "Moda": "mode",
-            "Bilateral": "bilateral",
-            "Gaussiano": "gaussian"
-        }
-        return filter_map.get(self.smoothing_combo.currentText(), "none")
-
-    def get_selected_edge_detection(self):
-        """Get the currently selected edge detection type"""
-        edge_map = {
-            "Ninguno": "none",
-            "Roberts": "roberts",
-            "Prewitt": "prewitt", 
-            "Sobel": "sobel",
-            "Robinson": "robinson",
-            "Kirsch": "kirsch",
-            "Canny": "canny",
-            "Laplaciano": "laplacian"
-        }
-        return edge_map.get(self.edge_combo.currentText(), "none")
-
-    def get_selected_morphological(self):
-        """Get the currently selected morphological operation"""
-        morph_map = {
-            "Ninguno": "none",
-            "Máximo": "max",
-            "Mínimo": "min"
-        }
-        return morph_map.get(self.morphological_combo.currentText(), "none")
-
-    def get_selected_segmentation(self):
-        """Get the currently selected segmentation type"""
-        seg_map = {
-            "Ninguno": "none",
-            "Umbral Media": "mean",
-            "Otsu": "otsu",
-            "Multi-Otsu": "multi_otsu",
-            "Entropía Kapur": "kapur", 
-            "Umbral Banda": "band",
-            "Adaptativo": "adaptive",
-            "Mín. Histograma": "histogram_min"
-        }
-        return seg_map.get(self.segmentation_combo.currentText(), "none")
-
-    def get_filter_parameters(self):
-        """Obtener parámetros dinámicos actuales"""
-        params = {}
-        
-        # Check if widgets exist and are valid before accessing them
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin and not self.kernel_spin.isHidden():
-                params['kernel_size'] = self.kernel_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider and not self.canny_low_slider.isHidden():
-                params['low_threshold'] = self.canny_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider and not self.canny_high_slider.isHidden():
-                params['high_threshold'] = self.canny_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin and not self.bilateral_d_spin.isHidden():
-                params['d'] = self.bilateral_d_spin.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider and not self.bilateral_color_slider.isHidden():
-                params['sigma_color'] = self.bilateral_color_slider.value()
-                params['sigma_space'] = self.bilateral_color_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'gaussian_sigma_slider') and self.gaussian_sigma_slider and not self.gaussian_sigma_slider.isHidden():
-                params['sigma'] = self.gaussian_sigma_slider.value() / 10.0
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def get_segmentation_parameters(self):
-        """Obtener parámetros de segmentación dinámicos"""
-        params = {}
-        
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin and not self.num_classes_spin.isHidden():
-                params['num_thresholds'] = self.num_classes_spin.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'band_low_slider') and self.band_low_slider and not self.band_low_slider.isHidden():
-                params['low_threshold'] = self.band_low_slider.value()
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'band_high_slider') and self.band_high_slider and not self.band_high_slider.isHidden():
-                params['high_threshold'] = self.band_high_slider.value()
-        except RuntimeError:
-            pass
-        
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider and not self.adaptive_block_slider.isHidden():
-                params['block_size'] = self.adaptive_block_slider.value()
-        except RuntimeError:
-            pass
-        
-        return params
-
-    def process_image_realtime(self):
-        """Process image in real-time with optimization"""
-        if not self.image_path or self.is_processing:
-            self.pending_update = True
-            return
-        self.start_processing_optimized()
-
-    def save_image(self):
-        """Save the processed image"""
-        if self.current_processed_image:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Guardar Imagen Procesada", "",
-                "PNG (*.png);;JPEG (*.jpg);;Todos los archivos (*)"
-            )
-            
-            if file_path:
-                success = self.current_processed_image.save(file_path)
-                if success:
-                    self.results_text.append(f"💾 Imagen guardada: {os.path.basename(file_path)}")
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo guardar la imagen.")
-        else:
-            QMessageBox.information(self, "Información", "No hay imagen procesada para guardar.")
-
-    def processing_started(self):
-        """Called when processing starts"""
-        self.process_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.progress_bar.show()
-        self.operation_label.setText("Procesando...")
-        self.results_text.append("🚀 Procesando imagen...")
-
-    def processing_finished(self):
-        """Called when processing finishes"""
-        self.process_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.save_button.setEnabled(True)
-        self.progress_bar.hide()
-        self.operation_label.setText("Listo")
-        self.results_text.append("✅ Procesamiento completado")
-        
-        if self.image_processor:
-            # Use deleteLater for proper Qt cleanup
-            self.image_processor.deleteLater()
-            self.image_processor = None
-
-    def on_image_updated(self, q_image):
-        """Called when processed image is ready"""
-        scaled_pixmap = QPixmap.fromImage(q_image).scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-        self.current_processed_image = q_image
-
-    def start_processing(self):
-        """Start image processing with current settings"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        filter_type = "none"
-        filter_params = self.get_filter_parameters()
-        
-        edge_filter = self.get_selected_edge_detection()
-        if edge_filter != "none":
-            filter_type = edge_filter
-        else:
-            morph_filter = self.get_selected_morphological()
-            if morph_filter != "none":
-                filter_type = morph_filter
-            else:
-                smoothing_filter = self.get_selected_filter()
-                if smoothing_filter != "none":
-                    filter_type = smoothing_filter
-
-        try:
-            self.image_processor = ImageProcessor(
-                image_path=self.image_path,
-                second_image_path=self.second_image_path,
-                operation_type='none',
-                filter_type=filter_type,
-                filter_params=filter_params,
-                segmentation_type=self.get_selected_segmentation(),
-                segmentation_params=self.get_segmentation_parameters(),
-                noise_level=self.noise_slider.value() if self.noise_checkbox.isChecked() else 0,
-                apply_noise=self.noise_checkbox.isChecked()
-            )
-            
-            self.image_processor.started.connect(self.processing_started)
-            self.image_processor.finished.connect(self.processing_finished)
-            self.image_processor.image_updated.connect(self.on_image_updated)
-            
-            self.image_processor.start()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al iniciar procesamiento: {str(e)}")
-
-    def stop_processing(self):
-        """Stop current processing"""
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            
-            self.processing_finished()
-            self.results_text.append("⏹️ Procesamiento detenido por el usuario")
-
-    def calculate_automatic_parameters(self):
-        """Calcular parámetros automáticos para la imagen actual"""
-        if not self.image_path:
-            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
-            return
-        
-        self.cleanup_temp_processors()
-        
-        temp_processor = ImageProcessor(
-            image_path=self.image_path,
-            filter_type='none',
-            segmentation_type='none'
-        )
-        temp_processor.calculate_auto_params = True
-        temp_processor.parameters_calculated.connect(self.apply_automatic_parameters)
-        temp_processor.finished.connect(lambda: self.cleanup_temp_processor(temp_processor))
-        
-        self.temp_processors.append(temp_processor)
-        temp_processor.start()
-
-    def apply_automatic_parameters(self, params):
-        """Aplicar parámetros calculados automáticamente"""
-        old_timer_state = self.processing_timer.isActive()
-        self.processing_timer.stop()
-        
-        try:
-            if hasattr(self, 'canny_low_slider') and self.canny_low_slider:
-                self.canny_low_slider.setValue(params.get('canny_low', 50))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'canny_high_slider') and self.canny_high_slider:
-                self.canny_high_slider.setValue(params.get('canny_high', 150))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'kernel_spin') and self.kernel_spin:
-                self.kernel_spin.setValue(params.get('kernel_size', 5))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'adaptive_block_slider') and self.adaptive_block_slider:
-                self.adaptive_block_slider.setValue(params.get('adaptive_block_size', 11))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_color_slider') and self.bilateral_color_slider:
-                self.bilateral_color_slider.setValue(int(params.get('bilateral_sigma_color', 80)))
-        except RuntimeError:
-            pass
-            
-        try:
-            if hasattr(self, 'bilateral_d_spin') and self.bilateral_d_spin:
-                self.bilateral_d_spin.setValue(params.get('bilateral_d', 9))
-        except RuntimeError:
-            pass
-        
-        # Apply optimal multi-otsu classes if available
-        try:
-            if hasattr(self, 'num_classes_spin') and self.num_classes_spin:
-                optimal_classes = params.get('optimal_multi_otsu_classes', 3)
-                self.num_classes_spin.setValue(optimal_classes)
-                if optimal_classes != 3:
-                    self.results_text.append(f"🎯 Clases óptimas para Multi-Otsu: {optimal_classes}")
-        except RuntimeError:
-            pass
-        
-        self.results_text.append("🤖 Parámetros calculados automáticamente")
-        
-        if old_timer_state or self.image_path:
-            self.schedule_realtime_processing()
-
-    def cleanup_temp_processors(self):
-        """Clean up finished temporary processors"""
-        for processor in self.temp_processors[:]:
-            if processor and not processor.isRunning():
-                self.temp_processors.remove(processor)
-
-    def cleanup_temp_processor(self, processor):
-        """Clean up a specific temporary processor"""
-        if processor in self.temp_processors:
-            self.temp_processors.remove(processor)
-        # Use deleteLater for proper Qt cleanup
-        processor.deleteLater()
-
-    def on_filter_changed(self):
-        """Called when any filter/segmentation setting changes"""
-        self.update_dynamic_parameters()
-        self.update_pipeline_visualization()  # Add this line
-        self.schedule_realtime_processing()
-
-    def schedule_realtime_processing(self):
-        """Schedule real-time processing with debouncing"""
-        if not self.image_path:
-            return
-        self.processing_timer.stop()
-        self.processing_timer.start()
-        # Also update pipeline when scheduling processing
-        self.update_pipeline_visualization()
-
-    def create_segmentation_panel(self):
-        panel = CollapsiblePanel("✂️ Segmentación")
-        
-        panel.add_widget(QLabel("Método:"))
-        self.segmentation_combo = QComboBox()
-        self.segmentation_combo.addItems([
-            "Ninguno", "Umbral Media", "Otsu", "Multi-Otsu", 
-            "Entropía Kapur", "Umbral Banda", "Adaptativo", "Mín. Histograma"
-        ])
-        self.segmentation_combo.currentTextChanged.connect(self.on_filter_changed)
-        panel.add_widget(self.segmentation_combo)
+    def create_visualization_panel(self):
+        """Panel para visualización de histograma y efectos"""
+        panel = CollapsiblePanel("📊 Visualización")
+        
+        # Botón para mostrar histograma
+        self.histogram_btn = QPushButton("📈 Ver Histograma")
+        self.histogram_btn.clicked.connect(self.show_histogram)
+        panel.add_widget(self.histogram_btn)
+        
+        # Botón para mostrar negativo
+        self.negative_btn = QPushButton("🔄 Ver Negativo")
+        self.negative_btn.clicked.connect(self.show_negative)
+        panel.add_widget(self.negative_btn)
         
         return panel
 
-    def create_action_buttons(self):
-        layout = QVBoxLayout()
-        layout.setSpacing(8)
-        layout.setContentsMargins(8, 8, 8, 8)
+    def create_object_detection_panel(self):
+        """Panel para detección de objetos conectados"""
+        panel = CollapsiblePanel("🔍 Detección de Objetos")
         
-        # Botón principal
-        self.process_button = QPushButton("🚀 Procesar")
-        self.process_button.setObjectName("ProcessButton")
-        self.process_button.clicked.connect(self.start_processing)
-        self.process_button.setEnabled(False)
-        layout.addWidget(self.process_button)
+        # Selector de conectividad
+        panel.add_widget(QLabel("Conectividad:"))
+        self.connectivity_combo = QComboBox()
+        self.connectivity_combo.addItems(["Vecindad-4", "Vecindad-8"])
+        panel.add_widget(self.connectivity_combo)
         
-        # Botones secundarios
-        buttons_layout = QHBoxLayout()
+        # Umbral para binarización
+        panel.add_widget(QLabel("Umbral Binarización:"))
+        threshold_layout = QHBoxLayout()
+        self.binary_threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.binary_threshold_slider.setRange(0, 255)
+        self.binary_threshold_slider.setValue(127)
         
-        self.stop_button = QPushButton("⏹")
-        self.stop_button.clicked.connect(self.stop_processing)
-        self.stop_button.setEnabled(False)
-        self.stop_button.setFixedWidth(40)
-        
-        self.save_button = QPushButton("💾")
-        self.save_button.clicked.connect(self.save_image)
-        self.save_button.setEnabled(False)
-        self.save_button.setFixedWidth(40)
-        
-        buttons_layout.addWidget(self.stop_button)
-        buttons_layout.addWidget(self.save_button)
-        
-        layout.addLayout(buttons_layout)
-        
-        return layout
-
-    def on_parameter_changed(self):
-        """Called when any parameter changes to trigger real-time processing"""
-        self.update_pipeline_visualization()
-        self.schedule_realtime_processing()
-
-    def apply_two_image_operation(self):
-        """Aplicar operación entre dos imágenes"""
-        if not self.image_path or not self.second_image_path:
-            QMessageBox.warning(self, "Advertencia", "Necesitas cargar dos imágenes.")
-            return
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        operation = None
-        if self.arithmetic_combo.currentText() != "Ninguna":
-            operation_map = {
-                "Suma": "suma",
-                "Resta": "resta", 
-                "Multiplicación": "multiplicacion",
-                "División": "division",
-                "Promedio": "promedio",
-                "Diferencia": "diferencia"
-            }
-            operation = operation_map.get(self.arithmetic_combo.currentText())
-        elif self.logical_combo.currentText() != "Ninguna":
-            operation_map = {
-                "AND": "and",
-                "OR": "or",
-                "XOR": "xor",
-                "NOT": "not"
-            }
-            operation = operation_map.get(self.logical_combo.currentText())
-        
-        if not operation:
-            QMessageBox.warning(self, "Advertencia", "Selecciona una operación.")
-            return
-        
-        self.image_processor = ImageProcessor(
-            image_path=self.image_path,
-            second_image_path=self.second_image_path,
-            operation_type=operation,
-            filter_type='none',
-            segmentation_type='none'
+        self.binary_threshold_label = QLabel("127")
+        self.binary_threshold_slider.valueChanged.connect(
+            lambda v: self.binary_threshold_label.setText(str(v))
         )
         
-        self.image_processor.started.connect(self.processing_started)
-        self.image_processor.finished.connect(self.two_image_operation_finished)
-        self.image_processor.image_updated.connect(self.on_image_updated)
+        threshold_layout.addWidget(self.binary_threshold_slider)
+        threshold_layout.addWidget(self.binary_threshold_label)
         
-        self.image_processor.start()
+        threshold_widget = QWidget()
+        threshold_widget.setLayout(threshold_layout)
+        panel.add_widget(threshold_widget)
+        
+        # Botón para detectar objetos
+        self.detect_objects_btn = QPushButton("🎯 Detectar Objetos")
+        self.detect_objects_btn.clicked.connect(self.detect_objects)
+        panel.add_widget(self.detect_objects_btn)
+        
+        # Etiqueta para mostrar resultados
+        self.objects_result_label = QLabel("Objetos detectados: -")
+        self.objects_result_label.setWordWrap(True)
+        self.objects_result_label.setStyleSheet("font-size: 10px; color: #666666;")
+        panel.add_widget(self.objects_result_label)
+        
+        return panel
 
-    def two_image_operation_finished(self):
-        """Llamado cuando termina la operación entre dos imágenes"""
-        self.processing_finished()
-        
-        self.operations_widget.setVisible(False)
-        self.arithmetic_combo.setCurrentIndex(0)
-        self.logical_combo.setCurrentIndex(0)
-        
-        self.second_image_path = None
-        self.second_image = None
-        
-        self.update_ui_state()
-        self.results_text.append("✓ Operación completada. Resultado como imagen principal.")
-
-    def start_processing_optimized(self):
-        """Optimized processing for real-time updates"""
-        if self.is_processing:
-            return
-        self.is_processing = True
-        
-        # Clean up previous processor without waiting
-        if self.image_processor:
-            if self.image_processor.isRunning():
-                self.image_processor.stop()
-                self.image_processor.quit()
-            self.image_processor = None
-
-        # Check if we still have a valid image path
-        if not self.image_path:
-            self.is_processing = False
+    def show_histogram(self):
+        """Mostrar histograma de la imagen actual"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
             return
         
-        filter_type = "none"
-        filter_params = self.get_filter_parameters()
-        
-        edge_filter = self.get_selected_edge_detection()
-        if edge_filter != "none":
-            filter_type = edge_filter
-        else:
-            morph_filter = self.get_selected_morphological()
-            if morph_filter != "none":
-                filter_type = morph_filter
-            else:
-                smoothing_filter = self.get_selected_filter()
-                if smoothing_filter != "none":
-                    filter_type = smoothing_filter
-
         try:
-            # Check if noise controls still exist before accessing
-            noise_level = 0
-            apply_noise = False
-            try:
-                if hasattr(self, 'noise_checkbox') and self.noise_checkbox and not self.noise_checkbox.isHidden():
-                    apply_noise = self.noise_checkbox.isChecked()
-                if hasattr(self, 'noise_slider') and self.noise_slider and not self.noise_slider.isHidden() and apply_noise:
-                    noise_level = self.noise_slider.value()
-            except RuntimeError:
-                pass
+            import matplotlib.pyplot as plt
             
-            self.image_processor = ImageProcessor(
-                image_path=self.image_path,
-                filter_type=filter_type,
-                filter_params=filter_params,
-                segmentation_type=self.get_selected_segmentation(),
-                segmentation_params=self.get_segmentation_parameters(),
-                noise_level=noise_level,
-                apply_noise=apply_noise
-            )
+            img = current_tab['current_image']
             
-            self.image_processor.finished.connect(self.realtime_processing_finished)
-            self.image_processor.image_updated.connect(self.on_image_updated_realtime)
-            self.image_processor.start()
+            # Crear ventana para histograma
+            self.histogram_window = QWidget()
+            self.histogram_window.setWindowTitle("Histograma de la Imagen")
+            self.histogram_window.setGeometry(200, 200, 800, 600)
+            
+            layout = QVBoxLayout(self.histogram_window)
+            
+            # Calcular histograma
+            if len(img.shape) == 3:  # Imagen en color
+                colors = ['b', 'g', 'r']
+                labels = ['Azul', 'Verde', 'Rojo']
+                
+                plt.figure(figsize=(10, 6))
+                for i, (color, label) in enumerate(zip(colors, labels)):
+                    hist = cv2.calcHist([img], [i], None, [256], [0, 256])
+                    plt.plot(hist, color=color, label=label)
+                
+                plt.title('Histograma RGB')
+                plt.xlabel('Intensidad de Pixel')
+                plt.ylabel('Frecuencia')
+                plt.legend()
+                plt.grid(True, alpha=0.3)
+                
+            else:  # Imagen en escala de grises
+                hist = cv2.calcHist([img], [0], None, [256], [0, 256])
+                plt.figure(figsize=(10, 6))
+                plt.plot(hist, color='black')
+                plt.title('Histograma en Escala de Grises')
+                plt.xlabel('Intensidad de Pixel')
+                plt.ylabel('Frecuencia')
+                plt.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plt.show()
+            
+            self.results_text.append("📈 Histograma mostrado")
+            
+        except ImportError:
+            QMessageBox.warning(self, "Error", "Matplotlib no está instalado. Instala con: pip install matplotlib")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al mostrar histograma: {str(e)}")
+
+    def show_negative(self):
+        """Mostrar el negativo de la imagen actual"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
+            return
+        
+        try:
+            img = current_tab['current_image'].copy()
+            
+            # Calcular negativo
+            negative_img = 255 - img
+            
+            # Crear nueva pestaña con el negativo
+            operation_name = f"Negativo_{self.tab_counter + 1}"
+            placeholder_path = f"temp_{operation_name}.png"
+            self.create_image_tab(placeholder_path, negative_img, operation_name)
+            
+            self.results_text.append(f"🔄 Negativo creado: {operation_name}")
             
         except Exception as e:
-            print(f"Error in real-time processing: {e}")
-            self.is_processing = False
+            QMessageBox.critical(self, "Error", f"Error al crear negativo: {str(e)}")
 
-    def on_image_updated_realtime(self, q_image):
-        """Handle real-time image updates with optimization"""
-        scaled_pixmap = QPixmap.fromImage(q_image).scaled(
-            self.image_label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.FastTransformation
-        )
-        self.image_label.setPixmap(scaled_pixmap)
-        self.current_processed_image = q_image
-
-    def realtime_processing_finished(self):
-        """Called when real-time processing finishes"""
-        self.is_processing = False
-        if self.image_processor:
-            # Use deleteLater for proper Qt cleanup
-            self.image_processor.deleteLater()
-            self.image_processor = None
-        if self.pending_update:
-            self.pending_update = False
-            # Use a short timer to avoid immediate restart
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(50, self.schedule_realtime_processing)
-
-    def update_dynamic_parameters(self):
-        """Actualizar parámetros dinámicos según selección"""
-        # Check if the layout still exists
-        if not hasattr(self, 'dynamic_params_layout') or not self.dynamic_params_layout:
+    def detect_objects(self):
+        """Detectar objetos conectados en la imagen"""
+        current_tab = self.get_current_tab_data()
+        if not current_tab:
+            QMessageBox.warning(self, "Advertencia", "Carga una imagen primero.")
             return
+        
+        try:
+            img = current_tab['current_image'].copy()
             
-        # Limpiar parámetros anteriores
-        for i in reversed(range(self.dynamic_params_layout.count())):
-            if i > 0:  # Mantener el botón automático
-                child = self.dynamic_params_layout.takeAt(i)
-                if child.widget():
-                    child.widget().deleteLater()
-        
-        # Obtener filtro/segmentación actual
-        current_filter = self.get_selected_filter()
-        current_edge = self.get_selected_edge_detection()
-        current_morph = self.get_selected_morphological()
-        current_seg = self.get_selected_segmentation()
-        
-        # Añadir parámetros según el tipo
-        if current_filter in ['averaging', 'median', 'mode'] or current_morph != 'none':
-            self.add_kernel_size_param()
-        
-        if current_filter == 'gaussian':
-            self.add_kernel_size_param()
-            self.add_gaussian_params()
-        
-        if current_filter == 'bilateral':
-            self.add_bilateral_params()
-        
-        if current_edge == 'canny':
-            self.add_canny_params()
-        
-        if current_seg == 'multi_otsu':
-            self.add_multi_otsu_params()
-        
-        if current_seg == 'band':
-            self.add_band_threshold_params()
-        
-        if current_seg == 'adaptive':
-            self.add_adaptive_params()
-
-    def add_kernel_size_param(self):
-        """Añadir control de tamaño de kernel"""
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel("Kernel:"))
-        
-        self.kernel_spin = QSpinBox()
-        self.kernel_spin.setRange(3, 15)
-        self.kernel_spin.setValue(5)
-        self.kernel_spin.setSingleStep(2)
-        self.kernel_spin.valueChanged.connect(self.on_parameter_changed)
-        layout.addWidget(self.kernel_spin)
-        
-        widget = QWidget()
-        widget.setLayout(layout)
-        self.dynamic_params_layout.addWidget(widget)
-
-    def add_bilateral_params(self):
-        """Añadir parámetros para filtro bilateral"""
-        # Parámetro d
-        d_layout = QHBoxLayout()
-        d_layout.addWidget(QLabel("Diámetro:"))
-        self.bilateral_d_spin = QSpinBox()
-        self.bilateral_d_spin.setRange(5, 15)
-        self.bilateral_d_spin.setValue(9)
-        self.bilateral_d_spin.valueChanged.connect(self.on_parameter_changed)
-        d_layout.addWidget(self.bilateral_d_spin)
-        
-        d_widget = QWidget()
-        d_widget.setLayout(d_layout)
-        self.dynamic_params_layout.addWidget(d_widget)
-        
-        # Sigma Color
-        color_layout = QHBoxLayout()
-        color_layout.addWidget(QLabel("Sigma Color:"))
-        self.bilateral_color_slider = QSlider(Qt.Orientation.Horizontal)
-        self.bilateral_color_slider.setRange(10, 200)
-        self.bilateral_color_slider.setValue(80)
-        self.bilateral_color_label = QLabel("80")
-        color_layout.addWidget(self.bilateral_color_slider)
-        color_layout.addWidget(self.bilateral_color_label)
-        
-        self.bilateral_color_slider.valueChanged.connect(
-            lambda v: (
-                self.bilateral_color_label.setText(str(v)),
-                self.on_parameter_changed()
+            # Convertir a escala de grises si es necesario
+            if len(img.shape) == 3:
+                gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                gray_img = img.copy()
+            
+            # Binarizar la imagen
+            threshold_value = self.binary_threshold_slider.value()
+            _, binary_img = cv2.threshold(gray_img, threshold_value, 255, cv2.THRESH_BINARY)
+            
+            # Determinar conectividad
+            connectivity = 4 if self.connectivity_combo.currentText() == "Vecindad-4" else 8
+            
+            # Etiquetar componentes conectados
+            num_labels, labels = cv2.connectedComponents(binary_img, connectivity=connectivity)
+            
+            # Crear imagen con colores para cada objeto
+            colored_labels = np.zeros((labels.shape[0], labels.shape[1], 3), dtype=np.uint8)
+            
+            # Asignar colores aleatorios a cada etiqueta
+            np.random.seed(42)  # Para resultados reproducibles
+            colors = np.random.randint(0, 255, size=(num_labels, 3), dtype=np.uint8)
+            colors[0] = [0, 0, 0]  # Fondo negro
+            
+            for label in range(num_labels):
+                colored_labels[labels == label] = colors[label]
+            
+            # Encontrar contornos para numeración
+            contours, _ = cv2.findContours(binary_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Crear imagen con contornos y numeración
+            result_img = cv2.cvtColor(binary_img, cv2.COLOR_GRAY2BGR)
+            
+            # Dibujar contornos y números
+            for i, contour in enumerate(contours):
+                # Dibujar contorno
+                cv2.drawContours(result_img, [contour], -1, (0, 255, 0), 2)
+                
+                # Encontrar centro y colocar número
+                moments = cv2.moments(contour)
+                if moments["m00"] != 0:
+                    cx = int(moments["m10"] / moments["m00"])
+                    cy = int(moments["m01"] / moments["m00"])
+                    cv2.putText(result_img, f'{i + 1}', (cx-10, cy), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            
+            # Crear pestañas con los resultados
+            connectivity_name = self.connectivity_combo.currentText()
+            
+            # Pestaña con imagen binarizada
+            binary_name = f"Binaria_T{threshold_value}_{self.tab_counter + 1}"
+            self.create_image_tab(f"temp_{binary_name}.png", 
+                                cv2.cvtColor(binary_img, cv2.COLOR_GRAY2BGR), binary_name)
+            
+            # Pestaña con etiquetas coloreadas
+            labels_name = f"Etiquetas_{connectivity_name}_{self.tab_counter + 1}"
+            self.create_image_tab(f"temp_{labels_name}.png", colored_labels, labels_name)
+            
+            # Pestaña con contornos numerados
+            contours_name = f"Objetos_{connectivity_name}_{self.tab_counter + 1}"
+            self.create_image_tab(f"temp_{contours_name}.png", result_img, contours_name)
+            
+            # Actualizar etiqueta de resultados
+            num_objects = num_labels - 1  # Restar 1 para excluir el fondo
+            self.objects_result_label.setText(
+                f"Objetos detectados: {num_objects}\n"
+                f"Conectividad: {connectivity_name}\n"
+                f"Umbral: {threshold_value}"
             )
-        )
-        
-        color_widget = QWidget()
-        color_widget.setLayout(color_layout)
-        self.dynamic_params_layout.addWidget(color_widget)
-
-    def add_canny_params(self):
-        """Añadir parámetros para Canny"""
-        # Umbral bajo
-        low_layout = QHBoxLayout()
-        low_layout.addWidget(QLabel("Bajo:"))
-        self.canny_low_slider = QSlider(Qt.Orientation.Horizontal)
-        self.canny_low_slider.setRange(10, 200)
-        self.canny_low_slider.setValue(50)
-        self.canny_low_label = QLabel("50")
-        low_layout.addWidget(self.canny_low_slider)
-        low_layout.addWidget(self.canny_low_label)
-        
-        self.canny_low_slider.valueChanged.connect(
-            lambda v: (
-                self.canny_low_label.setText(str(v)),
-                self.on_parameter_changed()
-            )
-        )
-        
-        # Umbral alto
-        high_layout = QHBoxLayout()
-        high_layout.addWidget(QLabel("Alto:"))
-        self.canny_high_slider = QSlider(Qt.Orientation.Horizontal)
-        self.canny_high_slider.setRange(50, 400)
-        self.canny_high_slider.setValue(150)
-        self.canny_high_label = QLabel("150")
-        high_layout.addWidget(self.canny_high_slider)
-        high_layout.addWidget(self.canny_high_label)
-        
-        self.canny_high_slider.valueChanged.connect(
-            lambda v: (
-                self.canny_high_label.setText(str(v)),
-                self.on_parameter_changed()
-            )
-        )
-        
-        low_widget = QWidget()
-        low_widget.setLayout(low_layout)
-        high_widget = QWidget()
-        high_widget.setLayout(high_layout)
-        
-        self.dynamic_params_layout.addWidget(low_widget)
-        self.dynamic_params_layout.addWidget(high_widget)
-
-    def add_multi_otsu_params(self):
-        """Añadir parámetros para Multi-Otsu"""
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel("Clases:"))
-        self.num_classes_spin = QSpinBox()
-        self.num_classes_spin.setRange(2, 5)
-        self.num_classes_spin.setValue(3)
-        self.num_classes_spin.valueChanged.connect(self.on_parameter_changed)
-        layout.addWidget(self.num_classes_spin)
-        
-        widget = QWidget()
-        widget.setLayout(layout)
-        self.dynamic_params_layout.addWidget(widget)
-
-    def add_band_threshold_params(self):
-        """Añadir parámetros para umbral de banda"""
-        # Banda baja
-        low_layout = QHBoxLayout()
-        low_layout.addWidget(QLabel("Bajo:"))
-        self.band_low_slider = QSlider(Qt.Orientation.Horizontal)
-        self.band_low_slider.setRange(0, 255)
-        self.band_low_slider.setValue(100)
-        self.band_low_label = QLabel("100")
-        low_layout.addWidget(self.band_low_slider)
-        low_layout.addWidget(self.band_low_label)
-        
-        self.band_low_slider.valueChanged.connect(
-            lambda v: (
-                self.band_low_label.setText(str(v)),
-                self.on_parameter_changed()
-            )
-        )
-        
-        # Banda alta
-        high_layout = QHBoxLayout()
-        high_layout.addWidget(QLabel("Alto:"))
-        self.band_high_slider = QSlider(Qt.Orientation.Horizontal)
-        self.band_high_slider.setRange(0, 255)
-        self.band_high_slider.setValue(200)
-        self.band_high_label = QLabel("200")
-        high_layout.addWidget(self.band_high_slider)
-        high_layout.addWidget(self.band_high_label)
-        
-        self.band_high_slider.valueChanged.connect(
-            lambda v: (
-                self.band_high_label.setText(str(v)),
-                self.on_parameter_changed()
-            )
-        )
-        
-        low_widget = QWidget()
-        low_widget.setLayout(low_layout)
-        high_widget = QWidget()
-        high_widget.setLayout(high_layout)
-        
-        self.dynamic_params_layout.addWidget(low_widget)
-        self.dynamic_params_layout.addWidget(high_widget)
-
-    def add_adaptive_params(self):
-        """Añadir parámetros para umbralización adaptativa"""
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel("Tamaño Bloque:"))
-        self.adaptive_block_slider = QSlider(Qt.Orientation.Horizontal)
-        self.adaptive_block_slider.setRange(3, 21)
-        self.adaptive_block_slider.setValue(11)
-        self.adaptive_block_slider.valueChanged.connect(self.ensure_odd_block_size_realtime)
-        self.adaptive_block_label = QLabel("11")
-        layout.addWidget(self.adaptive_block_slider)
-        layout.addWidget(self.adaptive_block_label)
-        
-        widget = QWidget()
-        widget.setLayout(layout)
-        self.dynamic_params_layout.addWidget(widget)
-
-    def ensure_odd_block_size_realtime(self, value):
-        """Asegurar que el tamaño de bloque sea impar y trigger real-time update"""
-        if value % 2 == 0:
-            value += 1
-            self.adaptive_block_slider.setValue(value)
-        self.adaptive_block_label.setText(str(value))
-        self.on_parameter_changed()
-
-    def add_gaussian_params(self):
-        """Añadir parámetros para filtro gaussiano"""
-        # Sigma parameter
-        sigma_layout = QHBoxLayout()
-        sigma_layout.addWidget(QLabel("Sigma:"))
-        self.gaussian_sigma_slider = QSlider(Qt.Orientation.Horizontal)
-        self.gaussian_sigma_slider.setRange(1, 50)
-        self.gaussian_sigma_slider.setValue(10)  # Default 1.0
-        self.gaussian_sigma_label = QLabel("1.0")
-        sigma_layout.addWidget(self.gaussian_sigma_slider)
-        sigma_layout.addWidget(self.gaussian_sigma_label)
-        
-        self.gaussian_sigma_slider.valueChanged.connect(
-            lambda v: (
-                self.gaussian_sigma_label.setText(str(v / 10.0)),
-                self.on_parameter_changed()
-            )
-        )
-        
-        sigma_widget = QWidget()
-        sigma_widget.setLayout(sigma_layout)
-        self.dynamic_params_layout.addWidget(sigma_widget)
+            
+            # Actualizar panel de resultados
+            self.results_text.append(f"🎯 Detección completada:")
+            self.results_text.append(f"   • {num_objects} objetos con {connectivity_name}")
+            self.results_text.append(f"   • Umbral: {threshold_value}")
+            self.results_text.append(f"   • Pestañas creadas: {binary_name}, {labels_name}, {contours_name}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error en detección de objetos: {str(e)}")
+            import traceback
+            traceback.print_exc()
