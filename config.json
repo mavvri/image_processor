@@ -1,0 +1,19 @@
+{
+  "parameters": {
+    "block_size": 21,
+    "c_value": 11,
+    "open_kernel": 4,
+    "open_iterations": 2,
+    "close_kernel_w": 7,
+    "close_kernel_h": 5,
+    "min_area": 1439,
+    "max_area": 42179,
+    "min_aspect": 0.2,
+    "max_aspect": 1.78,
+    "min_width": 20,
+    "max_width": 319,
+    "extent_threshold": 0.18
+  },
+  "version": "1.0",
+  "description": "Configuración de parámetros del sistema de conteo de coches"
+}

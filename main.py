@@ -1,22 +1,27 @@
 import sys
-from PyQt6.QtWidgets import QApplication
-from ui_components import ImageProcessingApp
+import os
+from PyQt5.QtWidgets import QApplication
+from app.ui.main_window import MainWindow
 
 def main():
-    """
-    Función principal para ejecutar la aplicación.
-    """
     app = QApplication(sys.argv)
-    app.setApplicationName("Procesamiento Digital de Imágenes Completo")
-    app.setApplicationVersion("3.0")
-    app.setOrganizationName("IPN-ESCOM")
     
-    # Crear y mostrar la ventana principal
-    window = ImageProcessingApp()
-    window.show()
+    # Set application properties
+    app.setApplicationName("Sistema de Conteo de Coches")
+    app.setApplicationVersion("1.0")
+    app.setOrganizationName("Computer Vision Project")
     
-    # Ejecutar el bucle de eventos de la aplicación
-    sys.exit(app.exec())
+    # Load global stylesheet if needed
+    try:
+        style_path = os.path.join(os.path.dirname(__file__), "app", "ui", "assets", "styles", "modern_style.qss")
+        with open(style_path, "r", encoding="utf-8") as f:
+            app.setStyleSheet(f.read())
+    except FileNotFoundError:
+        print("Global stylesheet not found, MainWindow will load its own styling.")
 
-if __name__ == "__main__":
+    main_window = MainWindow()
+    main_window.show()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
     main()

@@ -1,99 +1,83 @@
+REM filepath: c:\Users\micke\Downloads\IMG\final_project\run_app.bat
 @echo off
-REM Batch file para ejecutar la aplicación de Procesamiento Digital de Imágenes
-REM Activa el entorno virtual y ejecuta la aplicación
+setlocal
 
-echo ========================================
-echo  Procesamiento Digital de Imágenes
-echo  Sistema Orgánico Minimalista v3.1
-echo ========================================
-echo.
+set PROJECT_DIR=c:\Users\micke\Downloads\IMG\final_project
+set VENV_NAME=venv
 
-REM Verificar si existe el directorio del entorno virtual
-if not exist "venv" (
-    echo [ERROR] No se encontró el entorno virtual 'venv'
-    echo Por favor, asegúrate de que el entorno virtual esté creado en este directorio.
-    echo.
-    echo Para crear el entorno virtual, ejecuta:
-    echo python -m venv venv
-    echo venv\Scripts\activate
-    echo pip install -r requirements.txt
-    echo.
-    pause
-    exit /b 1
-)
+echo Starting Car Counting System...
 
-REM Verificar si existe el archivo de activación
-if not exist "venv\Scripts\activate.bat" (
-    echo [ERROR] El entorno virtual parece estar corrupto
-    echo No se encontró venv\Scripts\activate.bat
-    echo.
-    pause
-    exit /b 1
-)
-
-echo [INFO] Activando entorno virtual...
-call venv\Scripts\activate.bat
-
-REM Verificar que la activación fue exitosa
+cd /D "%PROJECT_DIR%"
 if errorlevel 1 (
-    echo [ERROR] No se pudo activar el entorno virtual
+    echo Failed to change directory to %PROJECT_DIR%.
+    echo Error Code: %errorlevel%
+    echo Please ensure the project directory exists.
     pause
     exit /b 1
 )
 
-echo [INFO] Entorno virtual activado correctamente
-echo.
-
-REM Verificar si existe el archivo principal de la aplicación
-if not exist "code.py" (
-    echo [ERROR] No se encontró el archivo principal 'code.py'
-    echo Asegúrate de que todos los archivos estén en el directorio correcto.
-    echo.
+if not exist "%VENV_NAME%\Scripts\activate.bat" (
+    echo Virtual environment not found.
+    echo Error Code: 2
+    echo Please run setup_venv.bat first to create the virtual environment.
     pause
-    exit /b 1
+    exit /b 2
 )
 
-echo [INFO] Verificando dependencias...
-python -c "import PyQt6, numpy, cv2" 2>nul
+if not exist "main.py" (
+    echo main.py not found.
+    echo Error Code: 3
+    echo Please ensure the project files are in place.
+    pause
+    exit /b 3
+)
+
+echo Activating virtual environment...
+call "%VENV_NAME%\Scripts\activate.bat"
 if errorlevel 1 (
-    echo [WARNING] Algunas dependencias pueden estar faltando
-    echo Instalando dependencias requeridas...
+    echo Failed to activate virtual environment.
+    echo Error Code: %errorlevel%
+    pause
+    exit /b 4
+)
+
+echo Running application...
+echo Debug: Checking Python version...
+python --version
+echo Debug: Checking if modules are available...
+python -c "import sys; print('Python path:', sys.executable)"
+python -c "try: import PyQt5; print('PyQt5: OK'); except ImportError: print('PyQt5: MISSING')"
+python -c "try: import cv2; print('OpenCV: OK'); except ImportError: print('OpenCV: MISSING')"
+echo Debug: Starting main.py...
+python main.py
+set APP_EXIT_CODE=%errorlevel%
+echo Debug: Python application exit code: %APP_EXIT_CODE%
+if %APP_EXIT_CODE% neq 0 (
     echo.
-    pip install PyQt6 numpy opencv-python
-    if errorlevel 1 (
-        echo [ERROR] No se pudieron instalar las dependencias
-        pause
-        exit /b 1
+    echo ============================================
+    echo APPLICATION ERROR DETECTED
+    echo ============================================
+    echo Application exited with error code: %APP_EXIT_CODE%
+    echo.
+    if %APP_EXIT_CODE% equ 1 (
+        echo Possible causes:
+        echo - Python syntax error in the code
+        echo - Missing dependencies
+        echo - Import errors
+    ) else if %APP_EXIT_CODE% equ 2 (
+        echo Possible causes:
+        echo - KeyboardInterrupt ^(Ctrl+C^)
+        echo - User terminated the application
+    ) else (
+        echo Unexpected error occurred
+        echo Check the error messages above for details
     )
-)
-
-echo [INFO] Dependencias verificadas
-echo.
-
-echo [INFO] Iniciando aplicación...
-echo ========================================
-echo.
-
-REM Ejecutar la aplicación
-python code.py
-
-REM Verificar si hubo algún error al ejecutar la aplicación
-if errorlevel 1 (
     echo.
-    echo ========================================
-    echo [ERROR] La aplicación terminó con errores
-    echo Revisa los mensajes anteriores para más información
-    echo ========================================
+    echo ============================================
+    pause
+    exit /b %APP_EXIT_CODE%
 ) else (
-    echo.
-    echo ========================================
-    echo [INFO] Aplicación cerrada correctamente
-    echo ========================================
+    echo Application closed normally.
+    echo Press any key to close this window...
+    pause >nul
 )
-
-echo.
-echo Presiona cualquier tecla para salir...
-pause >nul
-
-REM Desactivar el entorno virtual al salir
-deactivate
