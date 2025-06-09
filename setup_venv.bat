@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set PROJECT_DIR=c:\Users\micke\Downloads\IMG\final_project
+set PROJECT_DIR=
 set VENV_NAME=venv
 
 echo Setting up virtual environment for Car Counting System...
