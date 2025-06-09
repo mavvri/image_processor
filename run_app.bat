@@ -1,8 +1,8 @@
-REM filepath: c:\Users\micke\Downloads\IMG\final_project\run_app.bat
+
 @echo off
 setlocal
 
-set PROJECT_DIR=c:\Users\micke\Downloads\IMG\final_project
+set PROJECT_DIR=""
 set VENV_NAME=venv
 
 echo Starting Car Counting System...
